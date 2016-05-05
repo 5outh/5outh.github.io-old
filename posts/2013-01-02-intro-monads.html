@@ -104,79 +104,7 @@ ans' <span class="fu">=</span> mean' [<span class="dv">1</span>, <span class="dv
 </ul>
 </div>
 </p>
-        
-<div class="post_body">
-	<h4 id="what-is-a-monad">What is a Monad?</h4>
-<p>If you’ve used Haskell before, chances are that you’ve heard the term “monad” a good bit. But, you might not know what they are, or what they are really used for. It is my goal in this blog post to shed some light on what monads are, introduce and define few simple ones, and touch on their usefulness. I will assume basic familiarity with Haskell syntax in this blog post. A working knowledge of monoids and functors will also be beneficial, although not strictly necessary. Without further ado, let’s go ahead and look at the <code>Monad</code> typeclass:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">class</span> <span class="dt">Monad</span> m <span class="kw">where</span>  
-<span class="ot">    return ::</span> a <span class="ot">-&gt;</span> m a  
-<span class="ot">    (&gt;&gt;=) ::</span> m a <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> m b) <span class="ot">-&gt;</span> m b</code></pre></div>
-<p>We can see a Monad has two operations, return and <code>&gt;&gt;=</code> (this is commonly pronounced “bind”). You may suspect that you know what return does from other programming languages, but be warned: Haskell’s <code>return</code> is very different! Haskell’s return <em>only</em> operates on <code>Monad</code>s, and essentially acts as a “wrapping” function. That is, if you call <code>return</code> on a value, it will turn it into a monadic value of that type. We will look at an example of this shortly. The second operation, <code>&gt;&gt;=</code>, takes two arguments: an <code>a</code> wrapped in a <code>Monad m</code>(I will refer to this as <code>m a</code> from now on), and a function that converts an <code>a</code> to <code>b</code> wrapped in the same type of <code>Monad</code>, <code>m</code>. It produces a value of type <code>b</code>, wrapped in a <code>Monad</code> <code>m</code> (I will call this <code>m b</code> from now on). This may sound complicated, but I’ll do my best to explain it after showing the most basic <code>Monad</code> type, namely, the <code>Identity</code> <code>Monad</code>:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Identity</span> a <span class="fu">=</span> <span class="dt">Identity</span> a <span class="kw">deriving</span> <span class="dt">Show</span>
-
-<span class="kw">instance</span> <span class="dt">Monad</span> <span class="dt">Identity</span> <span class="kw">where</span>
-  return <span class="fu">=</span> <span class="dt">Identity</span>
-  (<span class="dt">Identity</span> a) <span class="fu">&gt;&gt;=</span> f <span class="fu">=</span> f a</code></pre></div>
-<p><em>Also defined in <a href="http://hackage.haskell.org/packages/archive/mtl/latest/doc/html/Control-Monad-Identity.html">Control.Monad.Identity</a></em></p>
-<p>The <code>Identity</code> data declaration defines only one type: <code>Identity a</code>. Basically, this is just a wrapper for a value, and nothing more. <code>return</code> is simply defined as <code>Identity</code>. We can, for example, call <code>return 3</code> and get <code>Identity 3</code>. Turning values into <code>Identity</code>s is as simple as that. The bind function may look a little bit more obscure, though. Let’s look closely: We first use pattern matching to be able to operate on the type that the Identity Monad wraps (Identity a), bind it (<code>&gt;&gt;=</code>) to a function (<code>f</code>). Since <code>f</code> converts normal values into monadic ones (look at the type declaration), we can simply apply <code>f</code> to <code>a</code>, and we’ve produced a new <code>Identity</code>. Here are some examples:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">m1 <span class="fu">=</span> <span class="dt">Identity</span> <span class="dv">3</span>
-
-addThree x <span class="fu">=</span> return <span class="fu">$</span> x<span class="fu">+</span><span class="dv">3</span>
-bindExample1 <span class="fu">=</span> m1 <span class="fu">&gt;&gt;=</span> addThree
-
-m2 <span class="fu">=</span> <span class="dt">Identity</span> <span class="st">&quot;salami&quot;</span>
-
-getLength x <span class="fu">=</span> return <span class="fu">$</span> length x
-bindExample2 <span class="fu">=</span> m2 <span class="fu">&gt;&gt;=</span> getLength</code></pre></div>
-<p>Basically the real tough part of understanding Monads is just understanding <code>&gt;&gt;=</code>. A little bit of dissection can explain a lot, but it took me months to really grasp the concept. On the surface, you’re morphing an <code>m a</code> into an <code>m b</code>. At first, I thought that the <code>m</code>’s in the type signature were allowed to different types of Monads. For instance, I thought that Monads made it possible to bind <code>Identity Int</code>s to functions that produced <code>[String]</code>s (we’ll look at the <code>[]</code> Monad in a minute). This is wrong, and for good reason! It was incredibly confusing to think about a function that could generalize to this degree and it is, to my knowledge, not possible to do so. The Monad (wrapper) type is retained, but the <em>wrapped</em> type can be changed by means of the function you bind to. The second thing that I want to stress is what <code>&gt;&gt;=</code> really does. What we’re doing with the <code>&gt;&gt;=</code> function is turning an <code>m a</code> into an <code>m b</code>, but it’s not so direct as you might want to think.</p>
-<p>The function argument in <code>&gt;&gt;=</code> ( <code>(a -&gt; m b)</code> ) was really confusing to me to begin with, so I’m going to try to explain it. The function you’re binding your <code>m a</code> to must take an <code>a</code> and return an <code>m b</code>. This means that you’re acting on the <em>wrapped</em> part of the Monad in order to produce an entirely new Monad. It took me a while to realize what exactly was happening, that I wasn’t supposed to be directly converting <code>m a</code> to <code>m b</code> by means of my argument function (that’s actually what <code>&gt;&gt;=</code> is for). Just remember that the function you bind to should operate on an <code>a</code> to produce an <code>m b</code>. With that knowledge, let’s take a look at some more examples of Monads.</p>
-<h4 id="more-monads">More Monads</h4>
-<p>If you’ve used Haskell, you’re likely already familiar with the <code>Maybe</code> data type:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Monad</span> <span class="dt">Maybe</span> <span class="kw">where</span>
-	return <span class="fu">=</span> <span class="dt">Just</span>
-	<span class="dt">Just</span> x <span class="fu">&gt;&gt;=</span> f <span class="fu">=</span> <span class="dt">Just</span> <span class="fu">$</span> f x
-	<span class="dt">Nothing</span> <span class="fu">&gt;&gt;=</span> f <span class="fu">=</span> <span class="dt">Nothing</span></code></pre></div>
-<p><em>Defined in the <a href="http://www.haskell.org/ghc/docs/latest/html/libraries/base/Prelude.html">Prelude</a></em></p>
-<p>The Maybe Monad is hardly an extension of the aforementioned <code>Identity</code> Monad. All we are really adding is the functionality to fail – that is, to produce a <code>Nothing</code> value if necessary. In fact, the <code>Just a</code> type is exactly the same as <code>Identity a</code>, except that a <code>Nothing</code> value anywhere in the computation will produce a <code>Nothing</code> as a result. Next, we’ll look at the Monad instance for <code>[]</code>:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Monad</span> [] <span class="kw">where</span>
-  return x <span class="fu">=</span> [x]
-  xs <span class="fu">&gt;&gt;=</span> f <span class="fu">=</span> concatMap f xs</code></pre></div>
-<p><em>Defined in the <a href="http://www.haskell.org/ghc/docs/latest/html/libraries/base/Prelude.html">Prelude</a></em></p>
-<p>The <code>[]</code> Monad is a little more complicated, but it’s really nothing too new. For return, we just have to wrap our value inside a list. Now, let’s look at <code>&gt;&gt;=</code>. <code>concatMap</code> actually <em>is</em> the <code>&gt;&gt;=</code> instance for lists. Why? Well, <code>concatMap</code> is, simply, <code>(concat . map)</code>. We know that <code>map</code> takes a list of <code>a</code>s and maps a function over them, and <code>concat</code> is a function that flattens lists, that is, turns <code>[[a]]</code>s into <code>[a]</code>s. When we compose these two functions (or use <code>concatMap</code>), we’re making a function that must produce <code>[[a]]</code>s out of <code>[a]</code>s, and then flatten them back to <code>[a]</code>s. That is exactly how <code>&gt;&gt;=</code> works for lists! Now, let’s take a look at a slightly more complicated Monad, namely, the <code>Reader</code> Monad:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Monad</span> ((<span class="ot">-&gt;</span>) r) <span class="kw">where</span>
-  return <span class="fu">=</span> const
-  f <span class="fu">&gt;&gt;=</span> g <span class="fu">=</span> \r <span class="ot">-&gt;</span> g (f r) r</code></pre></div>
-<p><em>Also defined in <a href="http://www.haskell.org/ghc/docs/6.12.2/html/libraries/base-4.2.0.1/Control-Monad-Instances.html">Control.Monad.Instances</a></em></p>
-<p>This one requires some explanation, because it’s a bit of a leap from the last three, since we’re defining a Monad instance for <em>functions</em>. I have added a couple of comments in the above code in order to further explain how everything is working in the <code>(-&gt;) r</code> Monad. Well, first things’s first. We define <code>return</code> as <code>const</code>, which takes some arbitrary argument and produces a function that produces a constant value (what we pass in to <code>return</code>). This is exactly what we want; a minimal context for functions. (<code>&gt;&gt;=</code>) is a bit more complex. First, let’s take a look at the type signature, specific to this Monad. We’re binding a function (<code>r -&gt; a</code>) to a function (<code>a -&gt; (r -&gt; b)</code>) to produce a function of type (<code>r -&gt; b</code>). So in the declaration of the function, <code>f</code> is of type (<code>r -&gt; a</code>) and <code>g</code> is of type (<code>a -&gt; (r -&gt; b)</code>). I’ve conveniently named the argument our function is going to take <code>r</code>, for clarity. This is what the user will pass into the function that (<code>&gt;&gt;=</code>) produces. <code>f</code> takes an <code>r</code>, so we apply the value from the lambda into it to produce an <code>a</code>. We then use that <code>a</code> to produce an (<code>r -&gt; b</code>), using <code>g</code>. This produces our function, but it needs to be fed some value, so we finally apply it to <code>r</code> in order to complete everything. If any of this sounds confusing, try to work through it on paper and read the comments in my code – after a bit of staring, it should start to make sense. I’ve also implemented the <code>mean</code> function here, using the <code>(-&gt;) r</code> Monad with and without do-notation.</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">-- using &gt;&gt;= and lambda functions</span>
-mean' <span class="fu">=</span> (fromIntegral <span class="fu">.</span> length) <span class="fu">&gt;&gt;=</span> \l <span class="ot">-&gt;</span> sum <span class="fu">&gt;&gt;=</span> \s <span class="ot">-&gt;</span> return <span class="fu">$</span> s <span class="fu">/</span> l
-
-<span class="co">-- translation using do notation</span>
-mean <span class="fu">=</span> <span class="kw">do</span>
-  l <span class="ot">&lt;-</span> (fromIntegral <span class="fu">.</span> length)
-  s <span class="ot">&lt;-</span> sum
-  return <span class="fu">$</span> s <span class="fu">/</span> l
-
-<span class="co">-- these are equivalent</span>
-ans  <span class="fu">=</span> mean  [<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">9</span>, <span class="dv">2</span>] <span class="co">-- 3.4</span>
-ans' <span class="fu">=</span> mean' [<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">9</span>, <span class="dv">2</span>] <span class="co">-- 3.4</span></code></pre></div>
-<p>We’ve only seen the tip of the iceberg when it comes to Monads, but this should serve as a good basic introduction. Once you get used to seeing Monads, they become a bit less scary. The more time you spend with them, the more comfortable you’ll feel with them. Before I end this post, I want to leave a question for the reader, as follows:</p>
-<blockquote>
-<p>Given the general <code>Tree</code> data type represented below, can you intuitively make a Monad instance?</p>
-</blockquote>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Tree</span> a <span class="fu">=</span> <span class="dt">Node</span> a [<span class="dt">Tree</span> a] <span class="fu">|</span> <span class="dt">Leaf</span> a <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)</code></pre></div>
-<p>I’ll explain why this is difficult when we talk about a similar mathematical type in the next post.</p>
-<p>Thanks for reading,</p>
-<p>Ben</p>
-<p><em>For more introductory monad material, I suggest the following resources:</em></p>
-<ul>
-<li><a href="http://learnyouahaskell.com/a-fistful-of-monads">Learn You a Haskell For Great Good! A Fistful of Monads</a></li>
-<li><a href="http://blog.sigfpe.com/2006/08/you-could-have-invented-monads-and.html">A Neighborhood of Infinity - You Could Have Invented Monads</a></li>
-<li><a href="http://channel9.msdn.com/Shows/Going+Deep/Brian-Beckman-Dont-fear-the-Monads">Brian Beckman - Don’t Fear the Monad</a></li>
-</ul>
-</div>
-
-<div id="disqus_thread"></div>
+        <div id="disqus_thread"></div>
     <script type="text/javascript">
         /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
         var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
@@ -191,6 +119,7 @@ ans' <span class="fu">=</span> mean' [<span class="dv">1</span>, <span class="dv
     <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
     <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
 </div>
+
       </section>
       <footer class="footer">
         © 2016 Benjamin Kovach
