@@ -1,0 +1,240 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Abstract Nonsense</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css">
+  </head>
+  <body>
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="../contact.html">About</a></li>
+</ul>
+
+
+        <h1 id="blog_title">Abstract Nonsense</h1>
+      </header>
+      <section>
+        
+          <h3 class="post-title">Implementing a fractional data type and investigating the expansion of the square root of 2</h3>
+        
+        <p>
+<div class="post_body">
+	<p>A couple of weeks ago, I completed <a href="http://projecteuler.net/problem=57">Project Euler #57: Investigating the Expansion of the Square Root of 2</a>. I found the problem really interesting, since it required me to write up my own fractional operations (addition, division, etc.)</p>
+<p>Today, I decided that I wanted to take my minimally defined fractional library and make it a more full-featured one. First, I’ll first walk through the building of the data type and implementing fractional operations, and then I’ll get to my solution of the Project Euler problem.</p>
+<p>First thing’s first. A <code>Fraction</code> is defined as a numerator and a denominator. My fractions consist of only Integers, and here’s how the data type is defined:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Fraction</span> <span class="fu">=</span> <span class="dt">Frac</span> <span class="dt">Integer</span> <span class="dt">Integer</span> <span class="co">-- Numerator Denominator</span>
+
+<span class="kw">instance</span> <span class="dt">Show</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  show (<span class="dt">Frac</span> a b) <span class="fu">=</span> (show a) <span class="fu">++</span> <span class="st">&quot; / &quot;</span> <span class="fu">++</span> (show b)</code></pre></div>
+<p>I wanted fractions to show up in the form <code>x / y</code>, so that is what the instance of <code>Show</code> I defined does. So, now that we have a data type, what can we do with it?</p>
+<p>Here’s a list of common functions that I think are necessary in the definition of a fraction: Addition, Subtraction, Multiplication, Division, Exponentiation, Simplification, Negation, getting the Numerator, and getting the Denominator. Let’s start with the simple ones:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">num ::</span> <span class="dt">Fraction</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span>
+num (<span class="dt">Frac</span> a _) <span class="fu">=</span> a
+
+<span class="ot">denom ::</span> <span class="dt">Fraction</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span>
+denom (<span class="dt">Frac</span> _ b) <span class="fu">=</span> b</code></pre></div>
+<p>Those are are <code>numerator</code> and <code>denominator</code> functions. We simply take the first or second argument of the <code>Frac</code> in order to get the parameter that we need, and disregard the other one (using <code>_</code>) since it’s unused. Simplifying is also simple enough. We just need to divide the numerator and the denominator by the greatest common divisor of the two. Since Haskell gives us a <code>GCD</code> function, this is pretty darn simple.</p>
+<p>Here’s how it’s implemented:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">simplify ::</span> <span class="dt">Fraction</span> <span class="ot">-&gt;</span> <span class="dt">Fraction</span>
+simplify (<span class="dt">Frac</span> a b) <span class="fu">=</span> <span class="dt">Frac</span> (a <span class="ot">`quot`</span> factor) (b <span class="ot">`quot`</span> factor)
+	<span class="kw">where</span> factor <span class="fu">=</span> gcd a b</code></pre></div>
+<p>Easy! We just make a new fraction out of the divided values. The function<code>quot</code> is basically just integer division that truncates the result towards 0. The second half of that is unimportant in this instance, since we’re dividing by the <code>GCD</code> of the numbers and the result will always be an integer value. Okay, so we have a couple of functions. Great! But, what about implementing addition, subtraction, etc?</p>
+<p>Well, basically what we want to do here is define a couple of instances of numeric types for our Fractional data type. The first instance we need to derive is <code>Num</code>, which has a few operations that we want:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Num</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  (<span class="fu">-</span>) f (<span class="dt">Frac</span> a b)          <span class="fu">=</span> f <span class="fu">+</span> (<span class="dt">Frac</span> (<span class="fu">-</span>a) b)
+  (<span class="fu">+</span>) (<span class="dt">Frac</span> a b) (<span class="dt">Frac</span> c d) <span class="fu">=</span> <span class="dt">Frac</span> num denom
+    <span class="kw">where</span> denom <span class="fu">=</span> lcm b d
+          num   <span class="fu">=</span> a <span class="fu">*</span> (denom <span class="ot">`quot`</span> b) <span class="fu">+</span> c <span class="fu">*</span> (denom <span class="ot">`quot`</span> d)
+  (<span class="fu">*</span>) (<span class="dt">Frac</span> a b) (<span class="dt">Frac</span> c d) <span class="fu">=</span> <span class="dt">Frac</span> (a<span class="fu">*</span>c) (b<span class="fu">*</span>d)
+  negate (<span class="dt">Frac</span> a b)         <span class="fu">=</span> <span class="dt">Frac</span> (<span class="fu">-</span>a) b
+  abs f                     <span class="fu">=</span> fmapF abs f
+    <span class="kw">where</span> fmapF f (<span class="dt">Frac</span> a b) <span class="fu">=</span> <span class="dt">Frac</span> (f a) (f b)
+  fromInteger x             <span class="fu">=</span> <span class="dt">Frac</span> x <span class="dv">1</span>
+  signum (<span class="dt">Frac</span> a b)         <span class="fu">=</span> <span class="kw">if</span> a <span class="fu">==</span> <span class="dv">0</span> <span class="kw">then</span> <span class="dv">0</span>
+                              <span class="kw">else</span>  <span class="kw">if</span> b <span class="fu">&gt;</span> <span class="dv">0</span> <span class="kw">then</span>
+                                    <span class="kw">if</span> a <span class="fu">&lt;</span> <span class="dv">0</span> <span class="kw">then</span> (<span class="fu">-</span><span class="dv">1</span>)
+                                    <span class="kw">else</span> <span class="dv">1</span>
+                              <span class="kw">else</span>  <span class="kw">if</span> a <span class="fu">&lt;</span> <span class="dv">0</span> <span class="kw">then</span> <span class="dv">1</span>
+                                    <span class="kw">else</span> (<span class="fu">-</span><span class="dv">1</span>)</code></pre></div>
+<p>The three “common” operators (<code>+</code>,<code>-</code>,<code>*</code>) are defined here, which means that we can now evaluate expressions such as <code>Frac 1 2 * Frac 1 2</code>. Cool, right? Those three operations are fairly self-explanatory, and the code (hopefully) isn’t too tough to follow. There are also three other function definitions here, that maybe aren’t quite as clear. The function <code>negate</code> simply turns a negative fraction positive, or a positive fraction negative. The function <code>abs</code> takes the absolute value of the fraction. This is fairly simple; we just use a function that maps <code>abs</code> (Integer absolute value) over the numerator and denominator of the fraction. The last is <code>signum</code>, which looks probably the most complicated, but all it actually does is tells us whether the <code>Fraction</code>is less than, greater than, or equal to 0 (returning -1, 1, and 0, respectively). Cool, so since we got all of those functions out of <code>Num</code>, where can we find the rest? We’re missing <code>/</code>, so we’ll make our <code>Fraction</code> an instance of <code>Fractional</code>. Seems appropriate, right?</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Fractional</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  (<span class="fu">/</span>) f             <span class="fu">=</span> (<span class="fu">*</span>) f <span class="fu">.</span> recip
+  recip (<span class="dt">Frac</span> a b)  <span class="fu">=</span> <span class="dt">Frac</span> b a
+  fromRational r    <span class="fu">=</span> <span class="dt">Frac</span> (numerator r) (denominator r)</code></pre></div>
+<p>Cool, we get division out of that, which is simple enough! We just take the reciprocal of the second fraction, and multiply the two. This may look a little funky, so I’ll explain that last. The other two functions defined here are <code>recip</code> and <code>fromRational</code>. <code>recip</code> simply flips the numerator and denominator in a <code>Fraction</code>, and this is easily handled with pattern matching. <code>fromRational</code> takes a rational number (which is provided the <code>numerator</code> and <code>denominator</code> functions) and turns it into a <code>Fraction</code>. Knowing what the <code>numerator</code> and <code>denominator</code> functions are, this function is incredibly trivial.</p>
+<p>Okay, so about that division function. Our division appears to take only one argument, but it actually takes two. <code>(*) f f'</code> is just syntactic sugar for <code>f * f'</code>. We want to compose the function <code>f</code> with the function <code>recip f'</code>, so we use the function <code>(*)</code>, apply it to <code>f</code>, and then apply that to the function <code>recip</code>, which is then called on the second argument of the function.</p>
+<p>Alright! We’ve got plenty of functions at our disposal now, so what’s next? Well, we want to be able to compare <code>Fractions</code>, so let’s go ahead and make it an instance of <code>Eq</code> and <code>Ord</code>, which allow us to check equivalency and order, respectively.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Eq</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  (<span class="fu">/=</span>) f    <span class="fu">=</span> not <span class="fu">.</span> (<span class="fu">==</span>) f
+  (<span class="fu">==</span>) f f' <span class="fu">=</span> (x <span class="fu">==</span> x') <span class="fu">&amp;&amp;</span> (y <span class="fu">==</span> y')
+      <span class="kw">where</span> (<span class="dt">Frac</span> x y) <span class="fu">=</span> simplify f
+            (<span class="dt">Frac</span> x' y') <span class="fu">=</span> simplify f'
+  
+<span class="kw">instance</span> <span class="dt">Ord</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  compare (<span class="dt">Frac</span> a b) (<span class="dt">Frac</span> c d) <span class="fu">=</span> compare (a <span class="ot">`quot`</span> b) (c <span class="ot">`quot`</span> d)
+  (<span class="fu">&lt;</span>)  f    <span class="fu">=</span> (<span class="fu">==</span>) <span class="dt">LT</span> <span class="fu">.</span> compare f
+  (<span class="fu">&gt;</span>)  f    <span class="fu">=</span> (<span class="fu">==</span>) <span class="dt">GT</span> <span class="fu">.</span> compare f
+  (<span class="fu">&gt;=</span>) f    <span class="fu">=</span> not <span class="fu">.</span> (<span class="fu">&lt;</span>) f
+  (<span class="fu">&lt;=</span>) f    <span class="fu">=</span> not <span class="fu">.</span> (<span class="fu">&gt;</span>) f
+  max  f f' <span class="fu">=</span> <span class="kw">if</span> f <span class="fu">&lt;</span> f' <span class="kw">then</span> f' <span class="kw">else</span> f
+  min  f f' <span class="fu">=</span> <span class="kw">if</span> f <span class="fu">&lt;</span> f' <span class="kw">then</span> f <span class="kw">else</span> f'</code></pre></div>
+<p>There’s a lot of functions that are similar in structure to our <code>/</code> function from earlier, so understanding what is happening with those will make these much easier to understand. Starting with <code>Eq</code>, we have two functions, <code>/=</code> (not equals) and <code>==</code>. <code>==</code> simply checks to see if the simplified version of <code>f</code> and the simplified version of <code>f'</code> have the same numerators and denominators. <code>/=</code> basically just returns the opposite of <code>==</code> by calling <code>not</code> on the result. <code>Ord</code> isn’t too tough either.</p>
+<p>First we have <code>compare</code>, which returns a comparator (<code>LT</code>, <code>GT</code>, or <code>EQ</code>) based on the relationship between two <code>Fractions</code>. The inequality functions are all designed around this function. The <code>max</code> and <code>min</code> functions are simple, and designed around our inequality functions. So, what’s left? I decided I wanted to experiment, so I decided to also make <code>Fraction</code> an instance of <a href="http://learnyouahaskell.com/functors-applicative-functors-and-monoids#monoids">Monoid</a> and give <code>Fraction</code> a simpler constructor. Here’s the rest!</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Monoid</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  mempty  <span class="fu">=</span> <span class="dv">0</span>
+  mappend <span class="fu">=</span> (<span class="fu">+</span>)
+  mconcat <span class="fu">=</span> foldr mappend mempty
+
+<span class="ot">(%) ::</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Fraction</span>
+(<span class="fu">%</span>) a <span class="fu">=</span> simplify <span class="fu">.</span> <span class="dt">Frac</span> a</code></pre></div>
+<p>The instance of <code>Monoid</code> defines a couple of functions: <code>mempty</code>, <code>mappend</code>, and <code>mconcat</code>. <code>mempty</code> is the minimal value for the <code>Monoid</code>.I chose 0 (which gets automatically boxed into a <code>Fraction</code>). <code>mappend</code> is a combiner function, and I thought that addition of fractions fit this bill well enough, so I simply gave it an alias. <code>mconcat</code> concatenates a list of fractions with some function, and in our case, sums the entire list. Our type constructor (<code>%</code>) takes two integers and boxes them up into a <code>Fraction</code>, which is then simplified. Easy enough. One final note on all of this. You may have noticed that exponentiation (<code>^</code>) isn’t implemented here. But, it actually is! Turns out, any data type that has a <code>Num</code> instance defined (like our <code>Fraction</code>) can use the <code>^</code> operator. So things like <code>(1 % 2)^2</code> actually get evaluated properly. (In this case, to <code>1 % 4</code>).</p>
+<p>All right! Let’s use this small library to solve <a href="http://projecteuler.net/problem=57">Project Euler #57</a>! Knowing how to use the <code>Fraction</code> library, this should be relatively easy to follow. Here we go:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Fraction</span>
+
+main <span class="fu">=</span> return <span class="fu">.</span> length <span class="fu">.</span> filter moreInNum <span class="fu">.</span> map sqrtTwo <span class="fu">$</span> [<span class="dv">1</span><span class="fu">..</span><span class="dv">1000</span>]
+  <span class="kw">where</span> moreInNum f <span class="fu">=</span> length ( (show <span class="fu">.</span> num) f ) <span class="fu">&gt;</span> length ( (show <span class="fu">.</span> denom) f)
+        sqrtTwo <span class="fu">=</span> simplify <span class="fu">.</span> (<span class="fu">+</span>) <span class="dv">1</span> <span class="fu">.</span> sqrtTwo'
+          <span class="kw">where</span> sqrtTwo' <span class="dv">1</span> <span class="fu">=</span> <span class="dv">1</span> <span class="fu">%</span> <span class="dv">2</span>
+                sqrtTwo' n <span class="fu">=</span> <span class="dv">1</span> <span class="fu">/</span> ( <span class="dv">2</span> <span class="fu">+</span> sqrtTwo' (pred n) )</code></pre></div>
+<p>Fairly simple. We directly implement the function and run it on each iteration, building a list as we go. We then filter our list so that the only entries left are the ones that have more digits in the numerator than the denominator. Lastly, we evaluate the length of that list, which gives us the answer.</p>
+<p><a href="http://lpaste.net/97144">View the full Fraction.hs source on lpaste.</a></p>
+<p>Until next time!</p>
+<p>Ben</p>
+</div>
+</p>
+        
+<div class="post_body">
+	<p>A couple of weeks ago, I completed <a href="http://projecteuler.net/problem=57">Project Euler #57: Investigating the Expansion of the Square Root of 2</a>. I found the problem really interesting, since it required me to write up my own fractional operations (addition, division, etc.)</p>
+<p>Today, I decided that I wanted to take my minimally defined fractional library and make it a more full-featured one. First, I’ll first walk through the building of the data type and implementing fractional operations, and then I’ll get to my solution of the Project Euler problem.</p>
+<p>First thing’s first. A <code>Fraction</code> is defined as a numerator and a denominator. My fractions consist of only Integers, and here’s how the data type is defined:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Fraction</span> <span class="fu">=</span> <span class="dt">Frac</span> <span class="dt">Integer</span> <span class="dt">Integer</span> <span class="co">-- Numerator Denominator</span>
+
+<span class="kw">instance</span> <span class="dt">Show</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  show (<span class="dt">Frac</span> a b) <span class="fu">=</span> (show a) <span class="fu">++</span> <span class="st">&quot; / &quot;</span> <span class="fu">++</span> (show b)</code></pre></div>
+<p>I wanted fractions to show up in the form <code>x / y</code>, so that is what the instance of <code>Show</code> I defined does. So, now that we have a data type, what can we do with it?</p>
+<p>Here’s a list of common functions that I think are necessary in the definition of a fraction: Addition, Subtraction, Multiplication, Division, Exponentiation, Simplification, Negation, getting the Numerator, and getting the Denominator. Let’s start with the simple ones:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">num ::</span> <span class="dt">Fraction</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span>
+num (<span class="dt">Frac</span> a _) <span class="fu">=</span> a
+
+<span class="ot">denom ::</span> <span class="dt">Fraction</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span>
+denom (<span class="dt">Frac</span> _ b) <span class="fu">=</span> b</code></pre></div>
+<p>Those are are <code>numerator</code> and <code>denominator</code> functions. We simply take the first or second argument of the <code>Frac</code> in order to get the parameter that we need, and disregard the other one (using <code>_</code>) since it’s unused. Simplifying is also simple enough. We just need to divide the numerator and the denominator by the greatest common divisor of the two. Since Haskell gives us a <code>GCD</code> function, this is pretty darn simple.</p>
+<p>Here’s how it’s implemented:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">simplify ::</span> <span class="dt">Fraction</span> <span class="ot">-&gt;</span> <span class="dt">Fraction</span>
+simplify (<span class="dt">Frac</span> a b) <span class="fu">=</span> <span class="dt">Frac</span> (a <span class="ot">`quot`</span> factor) (b <span class="ot">`quot`</span> factor)
+	<span class="kw">where</span> factor <span class="fu">=</span> gcd a b</code></pre></div>
+<p>Easy! We just make a new fraction out of the divided values. The function<code>quot</code> is basically just integer division that truncates the result towards 0. The second half of that is unimportant in this instance, since we’re dividing by the <code>GCD</code> of the numbers and the result will always be an integer value. Okay, so we have a couple of functions. Great! But, what about implementing addition, subtraction, etc?</p>
+<p>Well, basically what we want to do here is define a couple of instances of numeric types for our Fractional data type. The first instance we need to derive is <code>Num</code>, which has a few operations that we want:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Num</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  (<span class="fu">-</span>) f (<span class="dt">Frac</span> a b)          <span class="fu">=</span> f <span class="fu">+</span> (<span class="dt">Frac</span> (<span class="fu">-</span>a) b)
+  (<span class="fu">+</span>) (<span class="dt">Frac</span> a b) (<span class="dt">Frac</span> c d) <span class="fu">=</span> <span class="dt">Frac</span> num denom
+    <span class="kw">where</span> denom <span class="fu">=</span> lcm b d
+          num   <span class="fu">=</span> a <span class="fu">*</span> (denom <span class="ot">`quot`</span> b) <span class="fu">+</span> c <span class="fu">*</span> (denom <span class="ot">`quot`</span> d)
+  (<span class="fu">*</span>) (<span class="dt">Frac</span> a b) (<span class="dt">Frac</span> c d) <span class="fu">=</span> <span class="dt">Frac</span> (a<span class="fu">*</span>c) (b<span class="fu">*</span>d)
+  negate (<span class="dt">Frac</span> a b)         <span class="fu">=</span> <span class="dt">Frac</span> (<span class="fu">-</span>a) b
+  abs f                     <span class="fu">=</span> fmapF abs f
+    <span class="kw">where</span> fmapF f (<span class="dt">Frac</span> a b) <span class="fu">=</span> <span class="dt">Frac</span> (f a) (f b)
+  fromInteger x             <span class="fu">=</span> <span class="dt">Frac</span> x <span class="dv">1</span>
+  signum (<span class="dt">Frac</span> a b)         <span class="fu">=</span> <span class="kw">if</span> a <span class="fu">==</span> <span class="dv">0</span> <span class="kw">then</span> <span class="dv">0</span>
+                              <span class="kw">else</span>  <span class="kw">if</span> b <span class="fu">&gt;</span> <span class="dv">0</span> <span class="kw">then</span>
+                                    <span class="kw">if</span> a <span class="fu">&lt;</span> <span class="dv">0</span> <span class="kw">then</span> (<span class="fu">-</span><span class="dv">1</span>)
+                                    <span class="kw">else</span> <span class="dv">1</span>
+                              <span class="kw">else</span>  <span class="kw">if</span> a <span class="fu">&lt;</span> <span class="dv">0</span> <span class="kw">then</span> <span class="dv">1</span>
+                                    <span class="kw">else</span> (<span class="fu">-</span><span class="dv">1</span>)</code></pre></div>
+<p>The three “common” operators (<code>+</code>,<code>-</code>,<code>*</code>) are defined here, which means that we can now evaluate expressions such as <code>Frac 1 2 * Frac 1 2</code>. Cool, right? Those three operations are fairly self-explanatory, and the code (hopefully) isn’t too tough to follow. There are also three other function definitions here, that maybe aren’t quite as clear. The function <code>negate</code> simply turns a negative fraction positive, or a positive fraction negative. The function <code>abs</code> takes the absolute value of the fraction. This is fairly simple; we just use a function that maps <code>abs</code> (Integer absolute value) over the numerator and denominator of the fraction. The last is <code>signum</code>, which looks probably the most complicated, but all it actually does is tells us whether the <code>Fraction</code>is less than, greater than, or equal to 0 (returning -1, 1, and 0, respectively). Cool, so since we got all of those functions out of <code>Num</code>, where can we find the rest? We’re missing <code>/</code>, so we’ll make our <code>Fraction</code> an instance of <code>Fractional</code>. Seems appropriate, right?</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Fractional</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  (<span class="fu">/</span>) f             <span class="fu">=</span> (<span class="fu">*</span>) f <span class="fu">.</span> recip
+  recip (<span class="dt">Frac</span> a b)  <span class="fu">=</span> <span class="dt">Frac</span> b a
+  fromRational r    <span class="fu">=</span> <span class="dt">Frac</span> (numerator r) (denominator r)</code></pre></div>
+<p>Cool, we get division out of that, which is simple enough! We just take the reciprocal of the second fraction, and multiply the two. This may look a little funky, so I’ll explain that last. The other two functions defined here are <code>recip</code> and <code>fromRational</code>. <code>recip</code> simply flips the numerator and denominator in a <code>Fraction</code>, and this is easily handled with pattern matching. <code>fromRational</code> takes a rational number (which is provided the <code>numerator</code> and <code>denominator</code> functions) and turns it into a <code>Fraction</code>. Knowing what the <code>numerator</code> and <code>denominator</code> functions are, this function is incredibly trivial.</p>
+<p>Okay, so about that division function. Our division appears to take only one argument, but it actually takes two. <code>(*) f f'</code> is just syntactic sugar for <code>f * f'</code>. We want to compose the function <code>f</code> with the function <code>recip f'</code>, so we use the function <code>(*)</code>, apply it to <code>f</code>, and then apply that to the function <code>recip</code>, which is then called on the second argument of the function.</p>
+<p>Alright! We’ve got plenty of functions at our disposal now, so what’s next? Well, we want to be able to compare <code>Fractions</code>, so let’s go ahead and make it an instance of <code>Eq</code> and <code>Ord</code>, which allow us to check equivalency and order, respectively.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Eq</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  (<span class="fu">/=</span>) f    <span class="fu">=</span> not <span class="fu">.</span> (<span class="fu">==</span>) f
+  (<span class="fu">==</span>) f f' <span class="fu">=</span> (x <span class="fu">==</span> x') <span class="fu">&amp;&amp;</span> (y <span class="fu">==</span> y')
+      <span class="kw">where</span> (<span class="dt">Frac</span> x y) <span class="fu">=</span> simplify f
+            (<span class="dt">Frac</span> x' y') <span class="fu">=</span> simplify f'
+  
+<span class="kw">instance</span> <span class="dt">Ord</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  compare (<span class="dt">Frac</span> a b) (<span class="dt">Frac</span> c d) <span class="fu">=</span> compare (a <span class="ot">`quot`</span> b) (c <span class="ot">`quot`</span> d)
+  (<span class="fu">&lt;</span>)  f    <span class="fu">=</span> (<span class="fu">==</span>) <span class="dt">LT</span> <span class="fu">.</span> compare f
+  (<span class="fu">&gt;</span>)  f    <span class="fu">=</span> (<span class="fu">==</span>) <span class="dt">GT</span> <span class="fu">.</span> compare f
+  (<span class="fu">&gt;=</span>) f    <span class="fu">=</span> not <span class="fu">.</span> (<span class="fu">&lt;</span>) f
+  (<span class="fu">&lt;=</span>) f    <span class="fu">=</span> not <span class="fu">.</span> (<span class="fu">&gt;</span>) f
+  max  f f' <span class="fu">=</span> <span class="kw">if</span> f <span class="fu">&lt;</span> f' <span class="kw">then</span> f' <span class="kw">else</span> f
+  min  f f' <span class="fu">=</span> <span class="kw">if</span> f <span class="fu">&lt;</span> f' <span class="kw">then</span> f <span class="kw">else</span> f'</code></pre></div>
+<p>There’s a lot of functions that are similar in structure to our <code>/</code> function from earlier, so understanding what is happening with those will make these much easier to understand. Starting with <code>Eq</code>, we have two functions, <code>/=</code> (not equals) and <code>==</code>. <code>==</code> simply checks to see if the simplified version of <code>f</code> and the simplified version of <code>f'</code> have the same numerators and denominators. <code>/=</code> basically just returns the opposite of <code>==</code> by calling <code>not</code> on the result. <code>Ord</code> isn’t too tough either.</p>
+<p>First we have <code>compare</code>, which returns a comparator (<code>LT</code>, <code>GT</code>, or <code>EQ</code>) based on the relationship between two <code>Fractions</code>. The inequality functions are all designed around this function. The <code>max</code> and <code>min</code> functions are simple, and designed around our inequality functions. So, what’s left? I decided I wanted to experiment, so I decided to also make <code>Fraction</code> an instance of <a href="http://learnyouahaskell.com/functors-applicative-functors-and-monoids#monoids">Monoid</a> and give <code>Fraction</code> a simpler constructor. Here’s the rest!</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Monoid</span> <span class="dt">Fraction</span> <span class="kw">where</span>
+  mempty  <span class="fu">=</span> <span class="dv">0</span>
+  mappend <span class="fu">=</span> (<span class="fu">+</span>)
+  mconcat <span class="fu">=</span> foldr mappend mempty
+
+<span class="ot">(%) ::</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Fraction</span>
+(<span class="fu">%</span>) a <span class="fu">=</span> simplify <span class="fu">.</span> <span class="dt">Frac</span> a</code></pre></div>
+<p>The instance of <code>Monoid</code> defines a couple of functions: <code>mempty</code>, <code>mappend</code>, and <code>mconcat</code>. <code>mempty</code> is the minimal value for the <code>Monoid</code>.I chose 0 (which gets automatically boxed into a <code>Fraction</code>). <code>mappend</code> is a combiner function, and I thought that addition of fractions fit this bill well enough, so I simply gave it an alias. <code>mconcat</code> concatenates a list of fractions with some function, and in our case, sums the entire list. Our type constructor (<code>%</code>) takes two integers and boxes them up into a <code>Fraction</code>, which is then simplified. Easy enough. One final note on all of this. You may have noticed that exponentiation (<code>^</code>) isn’t implemented here. But, it actually is! Turns out, any data type that has a <code>Num</code> instance defined (like our <code>Fraction</code>) can use the <code>^</code> operator. So things like <code>(1 % 2)^2</code> actually get evaluated properly. (In this case, to <code>1 % 4</code>).</p>
+<p>All right! Let’s use this small library to solve <a href="http://projecteuler.net/problem=57">Project Euler #57</a>! Knowing how to use the <code>Fraction</code> library, this should be relatively easy to follow. Here we go:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Fraction</span>
+
+main <span class="fu">=</span> return <span class="fu">.</span> length <span class="fu">.</span> filter moreInNum <span class="fu">.</span> map sqrtTwo <span class="fu">$</span> [<span class="dv">1</span><span class="fu">..</span><span class="dv">1000</span>]
+  <span class="kw">where</span> moreInNum f <span class="fu">=</span> length ( (show <span class="fu">.</span> num) f ) <span class="fu">&gt;</span> length ( (show <span class="fu">.</span> denom) f)
+        sqrtTwo <span class="fu">=</span> simplify <span class="fu">.</span> (<span class="fu">+</span>) <span class="dv">1</span> <span class="fu">.</span> sqrtTwo'
+          <span class="kw">where</span> sqrtTwo' <span class="dv">1</span> <span class="fu">=</span> <span class="dv">1</span> <span class="fu">%</span> <span class="dv">2</span>
+                sqrtTwo' n <span class="fu">=</span> <span class="dv">1</span> <span class="fu">/</span> ( <span class="dv">2</span> <span class="fu">+</span> sqrtTwo' (pred n) )</code></pre></div>
+<p>Fairly simple. We directly implement the function and run it on each iteration, building a list as we go. We then filter our list so that the only entries left are the ones that have more digits in the numerator than the denominator. Lastly, we evaluate the length of that list, which gives us the answer.</p>
+<p><a href="http://lpaste.net/97144">View the full Fraction.hs source on lpaste.</a></p>
+<p>Until next time!</p>
+<p>Ben</p>
+</div>
+
+<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+      </section>
+      <footer class="footer">
+        © 2016 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <script src="js/scale.fix.js"></script>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>

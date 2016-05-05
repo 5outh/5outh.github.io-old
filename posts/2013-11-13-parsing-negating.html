@@ -1,0 +1,208 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Abstract Nonsense</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css">
+  </head>
+  <body>
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="../contact.html">About</a></li>
+</ul>
+
+
+        <h1 id="blog_title">Abstract Nonsense</h1>
+      </header>
+      <section>
+        
+          <h3 class="post-title">Parsing and Negating Boolean Strings in Haskell</h3>
+        
+        <p>
+<div class="post_body">
+	<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">{-# LANGUAGE NoMonomorphismRestriction #-}</span>
+ 
+<span class="kw">import </span><span class="dt">Text.ParserCombinators.Parsec</span>
+<span class="kw">import </span><span class="dt">Text.ParserCombinators.Parsec.Token</span> <span class="kw">hiding</span> (parens)
+<span class="kw">import </span><span class="dt">Text.ParserCombinators.Parsec.Expr</span>
+<span class="kw">import </span><span class="dt">Control.Applicative</span> <span class="kw">hiding</span> ((&lt;|&gt;))
+<span class="kw">import </span><span class="dt">Control.Monad</span>
+<span class="kw">import </span><span class="dt">Prelude</span> <span class="kw">hiding</span> (not)</code></pre></div>
+<p>It appears that <a href="http://www.reddit.com/r/dailyprogrammer/">the dailyprogrammer subreddit</a> is back after a pretty long hiatus, and they kicked back into gear with a really interesting problem. The problem was, paraphrasing:</p>
+<blockquote>
+<p>Given a Boolean expression as a string S, compute and print the negation of S as a string using DeMorgan’s laws.</p>
+</blockquote>
+<p><a href="http://www.reddit.com/r/dailyprogrammer/comments/1qira9/111213_challenge_135_intermediate_de_morgans_law/">The problem is also detailed in full here</a>. I completed the challenge and posted my solution to reddit, but wanted to share it here as well, so here it is, with slight modifications:</p>
+<p>This is a problem that is heavily suited to three major things that Haskell advocates: Algebraic Data Types, Pattern Matching, and Monadic Parsing. First off, if you’ve had any experience with automata theory, it’s pretty clear that the input language of Boolean expressions can be represented by a <a href="http://en.wikipedia.org/wiki/Context-free_grammar">context free grammar</a>. It just so happens that Haskell makes it incredibly easy to model CFGs right out of the box using Algebraic Data Types.</p>
+<p>Let’s take a look at this data type representing Boolean expressions:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Expr</span> <span class="fu">=</span> <span class="dt">Not</span> <span class="dt">Expr</span> 
+          <span class="fu">|</span> <span class="dt">And</span> <span class="dt">Expr</span> <span class="dt">Expr</span> 
+          <span class="fu">|</span> <span class="dt">Or</span> <span class="dt">Expr</span> <span class="dt">Expr</span> 
+          <span class="fu">|</span> <span class="dt">Var</span> <span class="dt">Char</span> 
+          <span class="fu">|</span> <span class="dt">SubExpr</span> <span class="dt">Expr</span> 
+          <span class="kw">deriving</span> <span class="dt">Eq</span></code></pre></div>
+<p>Simple. Now, the main problem of this challenge was actually performing the simplification of the not operation. Using pattern matching, we can <em>directly encode these rules</em> in the following manner:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">not<span class="ot"> ::</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">Expr</span>
+not (<span class="dt">Not</span> e)     <span class="fu">=</span> e
+not (<span class="dt">And</span> e1 e2) <span class="fu">=</span> <span class="dt">Or</span> (not e1) (not e2)
+not (<span class="dt">Or</span> e1 e2)  <span class="fu">=</span> <span class="dt">And</span> (not e1) (not e2)
+not (<span class="dt">Var</span> c)     <span class="fu">=</span> <span class="dt">Not</span> (<span class="dt">Var</span> c)
+not (<span class="dt">SubExpr</span> e) <span class="fu">=</span> not e</code></pre></div>
+<p>Here we’re giving a literal definition of rules for negating Boolean expressions. If you use Haskell, this is really easy to read. If you don’t: stare at it for a second; you’ll see what it’s doing! That’s the brunt of the challenge, right there. That’s it. Encode a Boolean expression into an <code>Expr</code> and call <code>not</code> on it, and it will spit out a new <code>Expr </code>expressing the negation of your original expression. DeMorgan’s laws are represented in the <code>And</code> and <code>Or</code> rules.We can also do this in a slightly modified way, using a function <code>simplify :: Expr -&gt; Expr</code> that simplifies expressions and another function <code>not = simplify . Not</code> to compute the same thing. It’s a similar solution so I won’t post it, but if you’d like to, feel free to experiment and/or add more simplification rules (e.g. <code>simplify e@(And a b) = if a == b then a else e</code>). We can also display our expressions as a string by declaring <code>Expr</code> an instance of <code>Show</code> in the following way:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Show</span> <span class="dt">Expr</span> <span class="kw">where</span>
+  show (<span class="dt">Not</span> e)     <span class="fu">=</span> <span class="st">&quot;NOT &quot;</span> <span class="fu">++</span> show e
+  show (<span class="dt">And</span> e1 e2) <span class="fu">=</span> show e1 <span class="fu">++</span> <span class="st">&quot; AND &quot;</span> <span class="fu">++</span> show e2
+  show (<span class="dt">Or</span> e1 e2)  <span class="fu">=</span> show e1 <span class="fu">++</span> <span class="st">&quot; OR &quot;</span>  <span class="fu">++</span> show e2
+  show (<span class="dt">Var</span> c)     <span class="fu">=</span> [c]
+  show (<span class="dt">SubExpr</span> e) <span class="fu">=</span> <span class="st">&quot;(&quot;</span> <span class="fu">++</span> show e <span class="fu">++</span> <span class="st">&quot;)&quot;</span></code></pre></div>
+<p>Now we can type in Boolean expressions using our data type, not them, and print them out as nice expressions. But, now we are faced with, in my opinion, the tougher part of the challenge. We’re able to actually compute everything we need to, but what about parsing a Boolean expression (as a string) into an <code>Expr</code>? We can use a monadic parsing library, namely Haskell’s beloved <a href="http://www.haskell.org/haskellwiki/Parsec">Parsec</a>, to do this in a rather simple way. We’ll be using Parsec’s <a href="http://hackage.haskell.org/package/parsec-3.0.0/docs/Text-Parsec-Token.html">Token</a> and <a href="http://hackage.haskell.org/package/parsec-3.0.0/docs/Text-Parsec-Expr.html">Expr</a> libraries, as well as the base, in this example. Let’s take a look.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">parseExpr ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">ParseError</span> <span class="dt">Expr</span>
+parseExpr <span class="fu">=</span> parse expr <span class="st">&quot;&quot;</span>
+  <span class="kw">where</span> expr      <span class="fu">=</span> buildExpressionParser operators term <span class="fu">&lt;?&gt;</span> <span class="st">&quot;compound expression&quot;</span>
+        term      <span class="fu">=</span>  parens expr <span class="fu">&lt;|&gt;</span> variable <span class="fu">&lt;?&gt;</span> <span class="st">&quot;full expression&quot;</span>
+        operators <span class="fu">=</span> [ [<span class="dt">Prefix</span> (string <span class="st">&quot;NOT&quot;</span> <span class="fu">&gt;&gt;</span> spaces <span class="fu">&gt;&gt;</span> return <span class="dt">Not</span>)]
+                    , [binary <span class="st">&quot;AND&quot;</span> <span class="dt">And</span>]
+                    , [binary <span class="st">&quot;OR&quot;</span> <span class="dt">Or</span>] ]
+          <span class="kw">where</span> binary n c <span class="fu">=</span> <span class="dt">Infix</span> (string n <span class="fu">*&gt;</span> spaces <span class="fu">*&gt;</span> pure c) <span class="dt">AssocLeft</span>
+        variable <span class="fu">=</span> <span class="dt">Var</span>     <span class="fu">&lt;$&gt;</span> (letter <span class="fu">&lt;*</span> spaces)                              
+                           <span class="fu">&lt;?&gt;</span> <span class="st">&quot;variable&quot;</span>
+        parens p <span class="fu">=</span> <span class="dt">SubExpr</span> <span class="fu">&lt;$&gt;</span> (char <span class="ch">'('</span> <span class="fu">*&gt;</span> spaces <span class="fu">*&gt;</span> p <span class="fu">&lt;*</span> char <span class="ch">')'</span> <span class="fu">&lt;*</span> spaces) 
+                           <span class="fu">&lt;?&gt;</span> <span class="st">&quot;parens&quot;</span></code></pre></div>
+<p>We essentially define the structure of our input here and parse it into an Expr using a bunch of case-specific parsing rules. <code>variable</code> parses a single <code>char</code> into a <code>Var</code>, <code>parens</code> matches and returns a <code>SubExpr</code>, and everything else is handled by using the convenience function <code>buildExpressionParser</code> along with a list of operator strings, the types they translate to and their operator precedence. Here we’re using applicative style to do our parsing, but monadic style is fine too. <a href="http://www.serpentine.com/blog/2008/02/06/the-basics-of-applicative-functors-put-to-practical-work/">Check this out for more on applicative style parsing</a>.</p>
+<p>Given that, we can define a <code>main</code> function to read in a file of expressions and output the negation of each of the expressions, like so:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">main <span class="fu">=</span> mapM_ printNotExpr <span class="fu">.</span> lines <span class="fu">=&lt;&lt;</span> readFile <span class="st">&quot;inputs.txt&quot;</span>
+  <span class="kw">where</span> printNotExpr e <span class="fu">=</span> <span class="kw">case</span> parseExpr e <span class="kw">of</span>
+                          <span class="dt">Right</span> x <span class="ot">-&gt;</span> print <span class="fu">$</span> not x
+                          <span class="dt">Left</span>  e <span class="ot">-&gt;</span> error <span class="fu">$</span> show e</code></pre></div>
+<p>Concise and to the point. We make sure that each line gets parsed properly, not the expressions, and print them. Here’s what we get when we run the program:</p>
+<pre><code>inputs.txt                             --- output
+
+a                                      --- NOT a
+NOT a                                  --- a
+a AND b                                --- NOT a OR NOT b 
+NOT a AND b                            --- a OR NOT b
+NOT (a AND b)                          --- a AND b
+NOT (a OR b AND c) OR NOT(a AND NOT b) --- (a OR b AND c) AND (a AND NOT b)</code></pre>
+<p><a href="https://gist.github.com/5outh/7452588#file-demorgan-hs">Finally, here’s the full source on Github</a>.</p>
+<p>Thanks for reading!</p>
+</div>
+</p>
+        
+<div class="post_body">
+	<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">{-# LANGUAGE NoMonomorphismRestriction #-}</span>
+ 
+<span class="kw">import </span><span class="dt">Text.ParserCombinators.Parsec</span>
+<span class="kw">import </span><span class="dt">Text.ParserCombinators.Parsec.Token</span> <span class="kw">hiding</span> (parens)
+<span class="kw">import </span><span class="dt">Text.ParserCombinators.Parsec.Expr</span>
+<span class="kw">import </span><span class="dt">Control.Applicative</span> <span class="kw">hiding</span> ((&lt;|&gt;))
+<span class="kw">import </span><span class="dt">Control.Monad</span>
+<span class="kw">import </span><span class="dt">Prelude</span> <span class="kw">hiding</span> (not)</code></pre></div>
+<p>It appears that <a href="http://www.reddit.com/r/dailyprogrammer/">the dailyprogrammer subreddit</a> is back after a pretty long hiatus, and they kicked back into gear with a really interesting problem. The problem was, paraphrasing:</p>
+<blockquote>
+<p>Given a Boolean expression as a string S, compute and print the negation of S as a string using DeMorgan’s laws.</p>
+</blockquote>
+<p><a href="http://www.reddit.com/r/dailyprogrammer/comments/1qira9/111213_challenge_135_intermediate_de_morgans_law/">The problem is also detailed in full here</a>. I completed the challenge and posted my solution to reddit, but wanted to share it here as well, so here it is, with slight modifications:</p>
+<p>This is a problem that is heavily suited to three major things that Haskell advocates: Algebraic Data Types, Pattern Matching, and Monadic Parsing. First off, if you’ve had any experience with automata theory, it’s pretty clear that the input language of Boolean expressions can be represented by a <a href="http://en.wikipedia.org/wiki/Context-free_grammar">context free grammar</a>. It just so happens that Haskell makes it incredibly easy to model CFGs right out of the box using Algebraic Data Types.</p>
+<p>Let’s take a look at this data type representing Boolean expressions:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Expr</span> <span class="fu">=</span> <span class="dt">Not</span> <span class="dt">Expr</span> 
+          <span class="fu">|</span> <span class="dt">And</span> <span class="dt">Expr</span> <span class="dt">Expr</span> 
+          <span class="fu">|</span> <span class="dt">Or</span> <span class="dt">Expr</span> <span class="dt">Expr</span> 
+          <span class="fu">|</span> <span class="dt">Var</span> <span class="dt">Char</span> 
+          <span class="fu">|</span> <span class="dt">SubExpr</span> <span class="dt">Expr</span> 
+          <span class="kw">deriving</span> <span class="dt">Eq</span></code></pre></div>
+<p>Simple. Now, the main problem of this challenge was actually performing the simplification of the not operation. Using pattern matching, we can <em>directly encode these rules</em> in the following manner:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">not<span class="ot"> ::</span> <span class="dt">Expr</span> <span class="ot">-&gt;</span> <span class="dt">Expr</span>
+not (<span class="dt">Not</span> e)     <span class="fu">=</span> e
+not (<span class="dt">And</span> e1 e2) <span class="fu">=</span> <span class="dt">Or</span> (not e1) (not e2)
+not (<span class="dt">Or</span> e1 e2)  <span class="fu">=</span> <span class="dt">And</span> (not e1) (not e2)
+not (<span class="dt">Var</span> c)     <span class="fu">=</span> <span class="dt">Not</span> (<span class="dt">Var</span> c)
+not (<span class="dt">SubExpr</span> e) <span class="fu">=</span> not e</code></pre></div>
+<p>Here we’re giving a literal definition of rules for negating Boolean expressions. If you use Haskell, this is really easy to read. If you don’t: stare at it for a second; you’ll see what it’s doing! That’s the brunt of the challenge, right there. That’s it. Encode a Boolean expression into an <code>Expr</code> and call <code>not</code> on it, and it will spit out a new <code>Expr </code>expressing the negation of your original expression. DeMorgan’s laws are represented in the <code>And</code> and <code>Or</code> rules.We can also do this in a slightly modified way, using a function <code>simplify :: Expr -&gt; Expr</code> that simplifies expressions and another function <code>not = simplify . Not</code> to compute the same thing. It’s a similar solution so I won’t post it, but if you’d like to, feel free to experiment and/or add more simplification rules (e.g. <code>simplify e@(And a b) = if a == b then a else e</code>). We can also display our expressions as a string by declaring <code>Expr</code> an instance of <code>Show</code> in the following way:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Show</span> <span class="dt">Expr</span> <span class="kw">where</span>
+  show (<span class="dt">Not</span> e)     <span class="fu">=</span> <span class="st">&quot;NOT &quot;</span> <span class="fu">++</span> show e
+  show (<span class="dt">And</span> e1 e2) <span class="fu">=</span> show e1 <span class="fu">++</span> <span class="st">&quot; AND &quot;</span> <span class="fu">++</span> show e2
+  show (<span class="dt">Or</span> e1 e2)  <span class="fu">=</span> show e1 <span class="fu">++</span> <span class="st">&quot; OR &quot;</span>  <span class="fu">++</span> show e2
+  show (<span class="dt">Var</span> c)     <span class="fu">=</span> [c]
+  show (<span class="dt">SubExpr</span> e) <span class="fu">=</span> <span class="st">&quot;(&quot;</span> <span class="fu">++</span> show e <span class="fu">++</span> <span class="st">&quot;)&quot;</span></code></pre></div>
+<p>Now we can type in Boolean expressions using our data type, not them, and print them out as nice expressions. But, now we are faced with, in my opinion, the tougher part of the challenge. We’re able to actually compute everything we need to, but what about parsing a Boolean expression (as a string) into an <code>Expr</code>? We can use a monadic parsing library, namely Haskell’s beloved <a href="http://www.haskell.org/haskellwiki/Parsec">Parsec</a>, to do this in a rather simple way. We’ll be using Parsec’s <a href="http://hackage.haskell.org/package/parsec-3.0.0/docs/Text-Parsec-Token.html">Token</a> and <a href="http://hackage.haskell.org/package/parsec-3.0.0/docs/Text-Parsec-Expr.html">Expr</a> libraries, as well as the base, in this example. Let’s take a look.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">parseExpr ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">ParseError</span> <span class="dt">Expr</span>
+parseExpr <span class="fu">=</span> parse expr <span class="st">&quot;&quot;</span>
+  <span class="kw">where</span> expr      <span class="fu">=</span> buildExpressionParser operators term <span class="fu">&lt;?&gt;</span> <span class="st">&quot;compound expression&quot;</span>
+        term      <span class="fu">=</span>  parens expr <span class="fu">&lt;|&gt;</span> variable <span class="fu">&lt;?&gt;</span> <span class="st">&quot;full expression&quot;</span>
+        operators <span class="fu">=</span> [ [<span class="dt">Prefix</span> (string <span class="st">&quot;NOT&quot;</span> <span class="fu">&gt;&gt;</span> spaces <span class="fu">&gt;&gt;</span> return <span class="dt">Not</span>)]
+                    , [binary <span class="st">&quot;AND&quot;</span> <span class="dt">And</span>]
+                    , [binary <span class="st">&quot;OR&quot;</span> <span class="dt">Or</span>] ]
+          <span class="kw">where</span> binary n c <span class="fu">=</span> <span class="dt">Infix</span> (string n <span class="fu">*&gt;</span> spaces <span class="fu">*&gt;</span> pure c) <span class="dt">AssocLeft</span>
+        variable <span class="fu">=</span> <span class="dt">Var</span>     <span class="fu">&lt;$&gt;</span> (letter <span class="fu">&lt;*</span> spaces)                              
+                           <span class="fu">&lt;?&gt;</span> <span class="st">&quot;variable&quot;</span>
+        parens p <span class="fu">=</span> <span class="dt">SubExpr</span> <span class="fu">&lt;$&gt;</span> (char <span class="ch">'('</span> <span class="fu">*&gt;</span> spaces <span class="fu">*&gt;</span> p <span class="fu">&lt;*</span> char <span class="ch">')'</span> <span class="fu">&lt;*</span> spaces) 
+                           <span class="fu">&lt;?&gt;</span> <span class="st">&quot;parens&quot;</span></code></pre></div>
+<p>We essentially define the structure of our input here and parse it into an Expr using a bunch of case-specific parsing rules. <code>variable</code> parses a single <code>char</code> into a <code>Var</code>, <code>parens</code> matches and returns a <code>SubExpr</code>, and everything else is handled by using the convenience function <code>buildExpressionParser</code> along with a list of operator strings, the types they translate to and their operator precedence. Here we’re using applicative style to do our parsing, but monadic style is fine too. <a href="http://www.serpentine.com/blog/2008/02/06/the-basics-of-applicative-functors-put-to-practical-work/">Check this out for more on applicative style parsing</a>.</p>
+<p>Given that, we can define a <code>main</code> function to read in a file of expressions and output the negation of each of the expressions, like so:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">main <span class="fu">=</span> mapM_ printNotExpr <span class="fu">.</span> lines <span class="fu">=&lt;&lt;</span> readFile <span class="st">&quot;inputs.txt&quot;</span>
+  <span class="kw">where</span> printNotExpr e <span class="fu">=</span> <span class="kw">case</span> parseExpr e <span class="kw">of</span>
+                          <span class="dt">Right</span> x <span class="ot">-&gt;</span> print <span class="fu">$</span> not x
+                          <span class="dt">Left</span>  e <span class="ot">-&gt;</span> error <span class="fu">$</span> show e</code></pre></div>
+<p>Concise and to the point. We make sure that each line gets parsed properly, not the expressions, and print them. Here’s what we get when we run the program:</p>
+<pre><code>inputs.txt                             --- output
+
+a                                      --- NOT a
+NOT a                                  --- a
+a AND b                                --- NOT a OR NOT b 
+NOT a AND b                            --- a OR NOT b
+NOT (a AND b)                          --- a AND b
+NOT (a OR b AND c) OR NOT(a AND NOT b) --- (a OR b AND c) AND (a AND NOT b)</code></pre>
+<p><a href="https://gist.github.com/5outh/7452588#file-demorgan-hs">Finally, here’s the full source on Github</a>.</p>
+<p>Thanks for reading!</p>
+</div>
+
+<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+      </section>
+      <footer class="footer">
+        © 2016 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <script src="js/scale.fix.js"></script>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>

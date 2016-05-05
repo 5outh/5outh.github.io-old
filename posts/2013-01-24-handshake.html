@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Abstract Nonsense</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css">
+  </head>
+  <body>
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="../contact.html">About</a></li>
+</ul>
+
+
+        <h1 id="blog_title">Abstract Nonsense</h1>
+      </header>
+      <section>
+        
+          <h3 class="post-title">Graph Theory and The Handshake Problem</h3>
+        
+        <p>
+<div class="post_body">
+	<h4 id="the-handshake-problem">The Handshake Problem</h4>
+<p>The Handshake Problem is something of a classic in mathematics. I first heard about it in an algebra course I took in high school, and it’s stuck with me through the years. The question is this:</p>
+<blockquote>
+<p>In a room containing <span class="math inline"><em>n</em></span> people, how many handshakes must take place for everyone to have shaken hands with everyone else?</p>
+</blockquote>
+<p>The goal of this short blog post will be to present a solution to this problem using the concept of graphs.</p>
+<h4 id="the-complete-graph">The Complete Graph</h4>
+<p><img src="http://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Complete_graph_K7.svg/611px-Complete_graph_K7.svg.png" style="float:right; height:200px; width:200px" /></p>
+<p>First, we must understand the idea of a complete graph. A <strong>complete graph</strong> is a graph such that each node is connected to every other node. A graphical example can be seen to the right. We can use the model of a complete graph to reason about the problem at hand. The nodes in the graph may represent the people in the room, while the connecting edges represent the handshakes that must take place. As such, the key to solving the Handshake Problem is to count the edges in a complete graph. But it would be silly to draw out a graph and count the edges one-by-one in order to solve this problem (and would take a very long time for large values of <span class="math inline"><em>n</em></span>), so we’ll use math!</p>
+<h4 id="the-solution">The Solution</h4>
+<p>To find the solution, we have to make a few key observations. The easiest way to start out in this case is to map out the first few complete graphs and try to find a pattern: Let <span class="math inline"><em>n</em></span> = the number of nodes, <span class="math inline"><em>e</em></span> = the number of edges.</p>
+<ul>
+<li><span class="math inline"><em>n</em> = 1 ⇒ <em>e</em> = 0</span></li>
+<li><span class="math inline"><em>n</em> = 2 ⇒ <em>e</em> = 1</span></li>
+<li><span class="math inline"><em>n</em> = 3 ⇒ <em>e</em> = 3</span></li>
+<li><span class="math inline"><em>n</em> = 4 ⇒ <em>e</em> = 6</span></li>
+</ul>
+<p>At this point, you may be noticing a pattern. As <span class="math inline"><em>n</em></span> increases, we’re adding <span class="math inline"><em>n</em> − 1</span> edges. This makes sense – each time a new node is introduced, it must connect to each node other than itself. In other words, <span class="math inline"><em>n</em> − 1</span> connections must be made. It follows that the number of the edges (<span class="math inline"><em>e</em></span>) in a complete graph with <span class="math inline"><em>n</em></span> vertices can be represented by the sum <span class="math inline">(<em>n</em> − 1)+(<em>n</em> − 2)+…+1 + 0</span>, or more compactly as: <br /><span class="math display">$$\sum_{i=1}^n i-1$$</span><br /> You may already know from summation laws that this evaluates to <span class="math inline">$\frac{n(n-1)}{2}$</span>. Let’s prove it.</p>
+<h4 id="the-proof">The Proof</h4>
+<p><em>Theorem:</em> <span class="math inline">$\forall n \in \mathbb{N} : \sum_{i=1}^{n} i-1 = \frac{n(n-1)}{2}$</span></p>
+<p><em>Proof:</em></p>
+<p><strong>Base case</strong>: Let <span class="math inline"><em>n</em> = 1</span>. Then, <span class="math inline">$\frac{1(1-1)}{2} = \sum_{i=1}^1 i-1 = 0$</span>.</p>
+<p><strong>Inductive step</strong>: Let <span class="math inline"><em>n</em> ∈ ℕ</span>. We need to prove that <span class="math inline">$\frac{n(n-1)}{2} + n = \frac{n(n+1)}{2}$</span>.</p>
+<p><br /><span class="math display">$$\begin{array} {lcl} \frac{n(n-1)}{2} + n &amp; = &amp;
+\frac{n(n-1)+2n}{2} \\ &amp; = &amp; \frac{n^2 - n + 2n}{2} \\ &amp; = &amp;
+\frac{n^2 + n}{2} \\ &amp; = &amp; \frac{n(n+1)}{2}■\end{array}$$</span><br /></p>
+<p>We can now use the theorem knowing it’s correct, and, in fact, provide a solution to the original problem. The answer to the Handshake Problem involving <span class="math inline"><em>n</em></span> people in a room is simply <span class="math inline">$\frac{n(n-1)}{2}$</span>. So, the next time someone asks you how many handshakes would have to take place in order for everyone in a room with 1029 people to shake each other’s hands, you can proudly answer “<strong>528906 handshakes!</strong>”</p>
+<p>Until next time,</p>
+<p>Ben</p>
+</div>
+</p>
+        
+<div class="post_body">
+	<h4 id="the-handshake-problem">The Handshake Problem</h4>
+<p>The Handshake Problem is something of a classic in mathematics. I first heard about it in an algebra course I took in high school, and it’s stuck with me through the years. The question is this:</p>
+<blockquote>
+<p>In a room containing <span class="math inline"><em>n</em></span> people, how many handshakes must take place for everyone to have shaken hands with everyone else?</p>
+</blockquote>
+<p>The goal of this short blog post will be to present a solution to this problem using the concept of graphs.</p>
+<h4 id="the-complete-graph">The Complete Graph</h4>
+<p><img src="http://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Complete_graph_K7.svg/611px-Complete_graph_K7.svg.png" style="float:right; height:200px; width:200px" /></p>
+<p>First, we must understand the idea of a complete graph. A <strong>complete graph</strong> is a graph such that each node is connected to every other node. A graphical example can be seen to the right. We can use the model of a complete graph to reason about the problem at hand. The nodes in the graph may represent the people in the room, while the connecting edges represent the handshakes that must take place. As such, the key to solving the Handshake Problem is to count the edges in a complete graph. But it would be silly to draw out a graph and count the edges one-by-one in order to solve this problem (and would take a very long time for large values of <span class="math inline"><em>n</em></span>), so we’ll use math!</p>
+<h4 id="the-solution">The Solution</h4>
+<p>To find the solution, we have to make a few key observations. The easiest way to start out in this case is to map out the first few complete graphs and try to find a pattern: Let <span class="math inline"><em>n</em></span> = the number of nodes, <span class="math inline"><em>e</em></span> = the number of edges.</p>
+<ul>
+<li><span class="math inline"><em>n</em> = 1 ⇒ <em>e</em> = 0</span></li>
+<li><span class="math inline"><em>n</em> = 2 ⇒ <em>e</em> = 1</span></li>
+<li><span class="math inline"><em>n</em> = 3 ⇒ <em>e</em> = 3</span></li>
+<li><span class="math inline"><em>n</em> = 4 ⇒ <em>e</em> = 6</span></li>
+</ul>
+<p>At this point, you may be noticing a pattern. As <span class="math inline"><em>n</em></span> increases, we’re adding <span class="math inline"><em>n</em> − 1</span> edges. This makes sense – each time a new node is introduced, it must connect to each node other than itself. In other words, <span class="math inline"><em>n</em> − 1</span> connections must be made. It follows that the number of the edges (<span class="math inline"><em>e</em></span>) in a complete graph with <span class="math inline"><em>n</em></span> vertices can be represented by the sum <span class="math inline">(<em>n</em> − 1)+(<em>n</em> − 2)+…+1 + 0</span>, or more compactly as: <br /><span class="math display">$$\sum_{i=1}^n i-1$$</span><br /> You may already know from summation laws that this evaluates to <span class="math inline">$\frac{n(n-1)}{2}$</span>. Let’s prove it.</p>
+<h4 id="the-proof">The Proof</h4>
+<p><em>Theorem:</em> <span class="math inline">$\forall n \in \mathbb{N} : \sum_{i=1}^{n} i-1 = \frac{n(n-1)}{2}$</span></p>
+<p><em>Proof:</em></p>
+<p><strong>Base case</strong>: Let <span class="math inline"><em>n</em> = 1</span>. Then, <span class="math inline">$\frac{1(1-1)}{2} = \sum_{i=1}^1 i-1 = 0$</span>.</p>
+<p><strong>Inductive step</strong>: Let <span class="math inline"><em>n</em> ∈ ℕ</span>. We need to prove that <span class="math inline">$\frac{n(n-1)}{2} + n = \frac{n(n+1)}{2}$</span>.</p>
+<p><br /><span class="math display">$$\begin{array} {lcl} \frac{n(n-1)}{2} + n &amp; = &amp;
+\frac{n(n-1)+2n}{2} \\ &amp; = &amp; \frac{n^2 - n + 2n}{2} \\ &amp; = &amp;
+\frac{n^2 + n}{2} \\ &amp; = &amp; \frac{n(n+1)}{2}■\end{array}$$</span><br /></p>
+<p>We can now use the theorem knowing it’s correct, and, in fact, provide a solution to the original problem. The answer to the Handshake Problem involving <span class="math inline"><em>n</em></span> people in a room is simply <span class="math inline">$\frac{n(n-1)}{2}$</span>. So, the next time someone asks you how many handshakes would have to take place in order for everyone in a room with 1029 people to shake each other’s hands, you can proudly answer “<strong>528906 handshakes!</strong>”</p>
+<p>Until next time,</p>
+<p>Ben</p>
+</div>
+
+<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+      </section>
+      <footer class="footer">
+        © 2016 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <script src="js/scale.fix.js"></script>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,372 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Abstract Nonsense</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css">
+  </head>
+  <body>
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="../contact.html">About</a></li>
+</ul>
+
+
+        <h1 id="blog_title">Abstract Nonsense</h1>
+      </header>
+      <section>
+        
+          <h3 class="post-title">Modeling and Simulating Markov Chain Evolution</h3>
+        
+        <p>
+<div class="post_body">
+	<p>In this post, I will describe and implement a small interface for modeling Markov chains and simulating their evolution in Haskell.</p>
+<h3 id="what-is-a-markov-chain">What is a Markov Chain?</h3>
+<p>
+<p><small width="200px" style="float:right; text-align:center"><a href="http://commons.wikimedia.org/wiki/File:Markovkate_01.svg#mediaviewer/File:Markovkate_01.svg"><img width="260px" src="http://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Markovkate_01.svg/1200px-Markovkate_01.svg.png" alt="Markovkate 01.svg"></a><br>A simple two-state Markov chain.<br>image by <a href="//commons.wikimedia.org/wiki/User:Joxemai4" title="User:Joxemai4">Joxemai4</a>.</small></p>
+A <a href="http://en.wikipedia.org/wiki/Markov_chain">discrete-time Markov chain (DTMC)</a> is a mathematical system that probabalistically transitions between states using only its current state. A Markov chain can be thought of as a directed graph with probabilities for edges and states for vertices. The Markov chain on the right has two states, <code>E</code> and <code>A</code>. The diagram states that a Markov chain in state <code>E</code> will transition back to state <code>E</code> with probability <code>0.3</code>, and to state <code>A</code> with probability <code>0.7</code>, and similarly for <code>A</code>’s transitions. They can be used for a wide variety of applications in statistical modeling.
+</p>
+<p>They can also be used to generate sentences similar to arbitrary blocks of text. We will explore this application towards the end of the post.</p>
+<h3 id="aside-weighted-random-generation">Aside: Weighted Random Generation</h3>
+<p>The first thing that comes to mind when I think of random generation is still <a href="http://learnyouahaskell.com/for-a-few-monads-more#making-monads">the <code>Prob</code> data type described in LYAH</a>. <a href="https://hackage.haskell.org/package/MonadRandom-0.1.13/docs/Control-Monad-Random.html">The <code>MonadRandom</code> library</a> defines a data type <a href="https://hackage.haskell.org/package/MonadRandom-0.1.13/docs/Control-Monad-Random.html#t:Rand"><code>Rand</code></a> which works, in many ways, in the same way as the <code>Prob</code> data type does (with a bit of extension to produce a transormer, etc.). I won’t go into the full details of how this works, but the basic ideas is that, given a list of outcomes with weights, e.g.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">[(<span class="st">&quot;Heads&quot;</span>, <span class="dv">1</span>), (<span class="st">&quot;Tails&quot;</span>, <span class="dv">1</span>)]</code></pre></div>
+<p>we can – by wrapping it in <code>Rand</code> and giving it a random generator – produce a weighted random outcome, “Heads” or “Tails” with the desired weighting. For a concrete example, here’s a functional program written using the <code>MonadRandom</code> library.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad.Random</span>
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> newStdGen <span class="fu">&gt;&gt;=</span> print <span class="fu">.</span> evalRand coinFlip
+  <span class="kw">where</span> coinFlip <span class="fu">=</span> uniform [<span class="st">&quot;Heads&quot;</span>, <span class="st">&quot;Tails&quot;</span>]</code></pre></div>
+<p><code>uniform</code> constructs a <code>Rand</code> from a list with a uniform distribution, i.e. with each member having the same weight. <code>evalRand</code> takes a <code>Rand</code> and a random generator (we’re using <code>StdGen</code> here with <code>newStdGen</code>) and spits out a weighted random object. Running this will print “Heads” about 50% of the time and “Tails” about 50% of the time.</p>
+<p>Also of note is the <code>fromList</code> combinator, which takes a list of objects and their weights and constructs a <code>Rand</code> object. For example, replacing <code>coinFlip</code> with <code>fromList [(&quot;Heads&quot;, 1), (&quot;Tails&quot;, 1)]</code> yields the same program as above.</p>
+<h3 id="markov-chains-an-intermediate-representation">Markov Chains: An Intermediate Representation</h3>
+<p>In order to model Markov chains, we essentially want to build a graph with weighted edges. We can model edge-weighted graphs using a <code>HashMap</code> from vertices to lists of edges, represented as <code>(vertex, weight)</code> pairs (the vertex the edge points to and its weight).</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Data.HashMap.Lazy</span> <span class="kw">as</span> <span class="dt">M</span>
+<span class="kw">import           </span><span class="dt">Data.Ratio</span>
+
+<span class="kw">type</span> <span class="dt">MarkovI</span> a <span class="fu">=</span> <span class="dt">M.HashMap</span> a (<span class="dt">Maybe</span> [(a, <span class="dt">Rational</span>)])</code></pre></div>
+<p>The <code>MarkovI</code> (<code>I</code> for “intermediate”) data type is a synonym for a lazy <code>HashMap</code> from <code>a</code> to a list of vertex-edge pairs. The only difference here is that we allow the list to be empty by using <code>Maybe</code>, which signifies an “end” state in the chain with no outgoing transitions. We could remove this wrapper and use an empty list to signify the same thing, but this representation works better with <code>MonadRandom</code>, since <code>Rand</code>s can’t be empty, making the translation straightforward.</p>
+<p>You might also be wondering why we need an intermediate representation for Markov chains in the first place. The reason for this is that we can’t arbitrarily insert extra objects/weights into <code>Rand</code>s, and we’ll want to build up the mappings piecemeal. We need some intermediate structure to handle this functionality.</p>
+<p>We can define functions to build up <code>MarkovI</code>s via insertion of objects:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">insertMkvI ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">Rational</span> <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a
+insertMkvI r k v mkv <span class="fu">=</span> M.insert k (<span class="dt">Just</span> <span class="fu">$</span> <span class="kw">case</span> M.lookup k mkv <span class="kw">of</span>
+  <span class="dt">Nothing</span> <span class="ot">-&gt;</span> [(v, r)]
+  <span class="dt">Just</span> xs <span class="ot">-&gt;</span> <span class="kw">case</span> xs <span class="kw">of</span>
+    <span class="dt">Nothing</span> <span class="ot">-&gt;</span> [(v, r)]
+    <span class="dt">Just</span> ys <span class="ot">-&gt;</span> (v, r)<span class="fu">:</span>ys) mkv
+
+<span class="ot">insertEnd ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a
+insertEnd k <span class="fu">=</span> M.insert k <span class="dt">Nothing</span></code></pre></div>
+<p><code>insertMkvI</code> inserts an edge into a <code>MarkovI</code>. Its first argument is the weight for the edge being inserted. Its next two arguments are the state objects to add a transition from/to, respectively, and the fourth is the <code>MarkovI</code> to insert into. <code>insertEnd</code> inserts a state with no outbound transitions into a Markov chain.</p>
+<p>It is worth noting that the <code>Rand</code> object constructed from lists like this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">[(<span class="dt">True</span>, <span class="dv">1</span>), (<span class="dt">True</span>, <span class="dv">1</span>), (<span class="dt">False</span>, <span class="dv">1</span>)]</code></pre></div>
+<p><em>do</em> weight <code>True</code> twice as heavily as <code>False</code>. This will become important later, when talking about a sentence generator.</p>
+<h3 id="markov-chains-final-representation">Markov Chains: Final Representation</h3>
+<p>The final representation of Markov chains simply turns those <code>[(a, Rational)]</code>s in <code>MarkovI</code> into true <code>Rand</code>s.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Control.Monad.Random</span> <span class="kw">as</span> <span class="dt">R</span>
+
+<span class="kw">newtype</span> <span class="dt">Markov</span> g a <span class="fu">=</span> <span class="dt">Markov</span>{<span class="ot"> getMarkov ::</span> <span class="dt">M.HashMap</span> a (<span class="dt">Maybe</span> (<span class="dt">R.Rand</span> g a)) }</code></pre></div>
+<p>We can define a simple conversion function to construct <code>Markov</code>s from the intermediate representation by converting their distribution lists to <code>Rand</code>s via <code>fromList</code>. This is straightforward because empty lists are represented as <code>Nothing</code>, so we don’t have to explicitly deal with that edge case when calling <code>R.fromList</code>, which would normally fail in such a case.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromMarkovI ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> <span class="dt">Markov</span> g a
+fromMarkovI <span class="fu">=</span> <span class="dt">Markov</span> <span class="fu">.</span> M.map (R.fromList <span class="fu">&lt;$&gt;</span>)</code></pre></div>
+<p>The first goal is to be able to – given a state and a random generator – transition to a new state probabalistically. The second goal is to be able to repeat this <code>n</code> times and track the states we pass through.</p>
+<p><code>runMarkov1</code> accomplishes the first goal:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Err</span> <span class="fu">=</span> <span class="dt">String</span>
+<span class="kw">data</span> <span class="dt">Outcome</span> g a <span class="fu">=</span>
+    <span class="dt">Error</span> <span class="dt">Err</span>
+  <span class="fu">|</span> <span class="dt">Val</span> a g
+  <span class="fu">|</span> <span class="dt">End</span>
+    <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)
+
+<span class="ot">runMarkov1 ::</span> (<span class="dt">R.RandomGen</span> g, <span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">Markov</span> g a <span class="ot">-&gt;</span> g <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">Outcome</span> g a
+runMarkov1 mkv gen x <span class="fu">=</span> <span class="kw">case</span> M.lookup x (getMarkov mkv) <span class="kw">of</span>
+  <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="dt">Error</span> <span class="st">&quot;Internal error; cannot find value&quot;</span>
+  <span class="dt">Just</span> rs <span class="ot">-&gt;</span> <span class="kw">case</span> flip R.runRand gen <span class="fu">&lt;$&gt;</span> rs <span class="kw">of</span>
+    <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="dt">End</span>
+    <span class="dt">Just</span> (a, g) <span class="ot">-&gt;</span> <span class="dt">Val</span> a g</code></pre></div>
+<p>First, if the state we’re looking for doesn’t exist, it is impossible to transition out of it, so the computation fails with an internal error. If not, we get a probablistic value out of the transition mappings from the state in question. If there aren’t any, we just <code>End</code> – we cannot transition, but don’t really want to throw an error. If there are values to choose from, we return one along with a new random generator, wrapped in <code>Val</code>.</p>
+<p>Extending this to run <code>n</code> times isn’t too tough. It mostly consists of finagling data types into the representation we want.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">runMarkov ::</span> (<span class="dt">R.RandomGen</span> g, <span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Markov</span> g a <span class="ot">-&gt;</span> g <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">Err</span> [a]
+runMarkov n mkv gen x <span class="fu">=</span> go n
+  <span class="kw">where</span>
+    go m <span class="fu">|</span> m <span class="fu">&lt;=</span> <span class="dv">0</span> <span class="fu">=</span> <span class="dt">Right</span> []
+         <span class="fu">|</span> otherwise <span class="fu">=</span> (x<span class="fu">:</span>) <span class="fu">&lt;$&gt;</span> <span class="kw">case</span> runMarkov1 mkv gen x <span class="kw">of</span>
+            <span class="dt">Val</span> a g <span class="ot">-&gt;</span> runMarkov (n<span class="fu">-</span><span class="dv">1</span>) mkv g a
+            <span class="dt">End</span> <span class="ot">-&gt;</span> <span class="dt">Right</span> []
+            <span class="dt">Error</span> err <span class="ot">-&gt;</span> <span class="dt">Left</span> err</code></pre></div>
+<p>If we hit an <code>End</code>, the simulation terminates because it can’t progress any further. If we get an error along the way, we wrap it in <code>Left</code> and return it. Otherwise, we run <code>runMarkov1</code> repeatedly <code>n</code> times, starting from the previously computed state each time, and collecting the results into a list. If no errors occur, the result will be a list of states passed through while the simulation runs.</p>
+<p>We can now define a <code>fromList</code> function, which builds up a Markov chain from mappings represented in list form.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromList ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a, <span class="dt">R.RandomGen</span> g) <span class="ot">=&gt;</span> [(a, [(a, <span class="dt">Rational</span>)])] <span class="ot">-&gt;</span> <span class="dt">Markov</span> g a
+fromList <span class="fu">=</span> <span class="dt">Markov</span> <span class="fu">.</span> foldl' (flip <span class="fu">$</span> uncurry ins) M.empty
+  <span class="kw">where</span> ins a b m <span class="fu">=</span> <span class="kw">case</span> b <span class="kw">of</span>
+          [] <span class="ot">-&gt;</span> M.insert a <span class="dt">Nothing</span> m
+          _  <span class="ot">-&gt;</span> M.insert a (<span class="dt">Just</span> <span class="fu">$</span> R.fromList b) m</code></pre></div>
+<p>With this at our disposal, it’s easy to model and run the example Markov chain I mentioned earlier.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">example ::</span> <span class="dt">Markov</span> <span class="dt">PureMT</span> <span class="dt">String</span>
+example <span class="fu">=</span> fromList [(<span class="st">&quot;E&quot;</span>, [(<span class="st">&quot;E&quot;</span>, <span class="dv">3</span>), (<span class="st">&quot;A&quot;</span>, <span class="dv">7</span>)]), (<span class="st">&quot;A&quot;</span>, [(<span class="st">&quot;E&quot;</span>, <span class="dv">4</span>), (<span class="st">&quot;A&quot;</span>, <span class="dv">6</span>)])]</code></pre></div>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">λ<span class="fu">&gt;</span> <span class="fu">:</span>m <span class="fu">+</span> <span class="dt">System.Random.Mersenne.Pure64</span>
+λ<span class="fu">&gt;</span> gen <span class="ot">&lt;-</span> newPureMT
+λ<span class="fu">&gt;</span> runMarkov <span class="dv">15</span> example gen <span class="st">&quot;E&quot;</span>
+<span class="dt">Right</span> [<span class="st">&quot;E&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;A&quot;</span>]</code></pre></div>
+<p>The Markov chain passes through “A” a bit more often than “E”, which is to be expected from its definition.</p>
+<h3 id="towards-a-sentence-generator">Towards a Sentence Generator</h3>
+<p>The process of sentence generation using Markov chains is pretty simple: For each word in a “seed text,” find the probability of each other word proceeding it. Build a Markov chain out of these probabilities, using words as states, and run it a desired number of times. In order to do this, we’ll first need a utility function which takes pairs of elements (which will represent words along with the word following them in a “seed text”) and produces a Markov chain out of them.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">insertMkvPairsInto ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> [(a, a)] <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a
+insertMkvPairsInto mkv [] <span class="fu">=</span> mkv
+insertMkvPairsInto mkv ps <span class="fu">=</span> insertEnd lst <span class="fu">$</span> foldl' (flip (uncurry (insertMkvI <span class="dv">1</span>))) mkv ps
+  <span class="kw">where</span> lst <span class="fu">=</span> snd <span class="fu">$</span> last ps</code></pre></div>
+<p>For each pair <code>(x, y)</code>, we insert a transition <code>x -&gt; y</code> with weight 1 into the Markov chain, and insert the final value in as an <code>End</code>. The reason this works is because of something I mentioned earlier: <code>Rand</code> handles distributions like <code>[(True, 1), (True, 1), (False, 1)]</code> properly. We build lists very similar to this one when processing a block of text for sentence generation, and when finally converting to <code>Markov</code>, all of that plumbing gets handled automatically. As a final note, we’ll use that <code>End</code> construct to mark the end of a sentence.</p>
+<p>The next thing is actually building a <code>MarkovI</code> from a sentence – this can be done by zipping the list of its words with the tail of it and using the aforementioned function, like so:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Data.Text</span> <span class="kw">as</span> <span class="dt">T</span>
+<span class="ot">wordPairs ::</span> <span class="dt">T.Text</span> <span class="ot">-&gt;</span> [(<span class="dt">T.Text</span>, <span class="dt">T.Text</span>)]
+wordPairs <span class="fu">=</span> (zip <span class="fu">&lt;*&gt;</span> tail) <span class="fu">.</span> T.words
+
+<span class="ot">insertSentence ::</span> <span class="dt">MarkovI</span> <span class="dt">T.Text</span> <span class="ot">-&gt;</span> <span class="dt">T.Text</span> <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> <span class="dt">T.Text</span>
+insertSentence mkv <span class="fu">=</span> insertMkvPairsInto mkv <span class="fu">.</span> wordPairs</code></pre></div>
+<p><small>wordPairs could be written more simply in a pointful style, but I think the point{free, less} version is cool. :)</small></p>
+<p>Now, to build a Markov chain from a bunch of sentences (be it a paragraph, a book), we can just fold into an empty <code>MarkovI</code> and convert it from the intermediate representation:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromSentences ::</span> <span class="dt">R.RandomGen</span> g <span class="ot">=&gt;</span> [<span class="dt">T.Text</span>] <span class="ot">-&gt;</span> <span class="dt">Markov</span> g <span class="dt">T.Text</span>
+fromSentences <span class="fu">=</span> fromMarkovI <span class="fu">.</span> foldl' insertSentence M.empty</code></pre></div>
+<p>The rest is mostly plumbing:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">{-# LANGUAGE OverloadedStrings #-}</span>
+<span class="kw">import </span><span class="dt">System.Random.Mersenne.Pure64</span>
+
+<span class="ot">runFromSentences ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> [<span class="dt">T.Text</span>] <span class="ot">-&gt;</span> <span class="dt">IO</span> (<span class="dt">Either</span> <span class="dt">Err</span> <span class="dt">T.Text</span>)
+runFromSentences n sentences <span class="fu">=</span> <span class="kw">do</span>
+  g <span class="ot">&lt;-</span> newPureMT
+  <span class="kw">let</span> hds <span class="fu">=</span> map (head <span class="fu">.</span> T.words) sentences
+  seed <span class="ot">&lt;-</span> R.uniform hds
+  return <span class="fu">$</span> T.unwords <span class="fu">&lt;$&gt;</span> runMarkov n (fromSentences sentences) g seed
+
+<span class="ot">test ::</span> [<span class="dt">T.Text</span>]
+test <span class="fu">=</span> [
+  <span class="st">&quot;I am a monster.&quot;</span>,
+  <span class="st">&quot;I am a rock star.&quot;</span>,
+  <span class="st">&quot;I want to go to Hawaii.&quot;</span>,
+  <span class="st">&quot;I want to eat a hamburger.&quot;</span>,
+  <span class="st">&quot;I have a really big headache.&quot;</span>,
+  <span class="st">&quot;Haskell is a fun language!&quot;</span>,
+  <span class="st">&quot;Go eat a big hamburger!&quot;</span>,
+  <span class="st">&quot;Markov chains are fun to use!&quot;</span>
+  ]</code></pre></div>
+<p>We get a new <a href="http://hackage.haskell.org/package/mersenne-random-pure64-0.2.0.2/docs/System-Random-Mersenne-Pure64.html"><code>PureMT</code></a> to use for a generator, and grab a random word (from the beginning of a sentence) to use as the starting state. We then run a markov simulation, collecting the words we pass through, and finally call <code>T.unwords</code> on the result to build a sentence from the words in sequence. Running this yields some interesting statements (and a lot of nonsensical ones), for example:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">λ<span class="fu">&gt;</span> runFromSentences <span class="dv">10</span> test
+<span class="dt">Right</span> <span class="st">&quot;Haskell is a hamburger.&quot;</span>
+<span class="dt">Right</span> <span class="st">&quot;Go eat a really big headache.&quot;</span>
+<span class="dt">Right</span> <span class="st">&quot;I am a fun to go to go to eat&quot;</span></code></pre></div>
+<h3 id="application-rap-candy">Application: Rap Candy</h3>
+<p>As you might imagine, this type of thing gets more interesting when you’re working with a larger set of sentences. For me, I thought it would be fun(ny) to take lines from Eminem’s music as “sentences,” make tweet-sized snippets from them, and automate a twitter bot to post one every day. Most of the tweets are pretty nonsensical (and very vulgar), here’s one:</p>
+<blockquote class="twitter-tweet" lang="en">
+<p>
+Now I'm on a magazine
+Take a catastrophe for me
+Cause of New sh*t, exclusive whoo kid
+I'm the first king of danger, intertwine it
+</p>
+— rapcandy (<span class="citation">@_rapcandy</span>) <a href="https://twitter.com/_rapcandy/statuses/495019304883331072">August 1, 2014</a>
+</blockquote>
+<script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+<p><a href="https://github.com/5outh/rapcandy">rapcandy is open source</a>. Its Markov chain mechanism differs slightly from what was presented here, but the ideas are the same. It also includes a simple example of how to connect to Twitter using Haskell (which I’ll be covering separately in a short blog post soon), as well as web-scraper written in node that I used to download Eminem’s lyrics programmatically. Feel free to browse the code and follow <a href="https://twitter.com/_rapcandy">@_rapcandy on Twitter</a>.</p>
+<p>I’ve also boxed up (most of) the code from this blog post into a small cabal package that you can use if you’d like to play around with your own Markov chain based applications. <a href="https://github.com/5outh/markov-sim">You can download markov-sim and browse its source here</a>.</p>
+</div>
+</p>
+        
+<div class="post_body">
+	<p>In this post, I will describe and implement a small interface for modeling Markov chains and simulating their evolution in Haskell.</p>
+<h3 id="what-is-a-markov-chain">What is a Markov Chain?</h3>
+<p>
+<p><small width="200px" style="float:right; text-align:center"><a href="http://commons.wikimedia.org/wiki/File:Markovkate_01.svg#mediaviewer/File:Markovkate_01.svg"><img width="260px" src="http://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Markovkate_01.svg/1200px-Markovkate_01.svg.png" alt="Markovkate 01.svg"></a><br>A simple two-state Markov chain.<br>image by <a href="//commons.wikimedia.org/wiki/User:Joxemai4" title="User:Joxemai4">Joxemai4</a>.</small></p>
+A <a href="http://en.wikipedia.org/wiki/Markov_chain">discrete-time Markov chain (DTMC)</a> is a mathematical system that probabalistically transitions between states using only its current state. A Markov chain can be thought of as a directed graph with probabilities for edges and states for vertices. The Markov chain on the right has two states, <code>E</code> and <code>A</code>. The diagram states that a Markov chain in state <code>E</code> will transition back to state <code>E</code> with probability <code>0.3</code>, and to state <code>A</code> with probability <code>0.7</code>, and similarly for <code>A</code>’s transitions. They can be used for a wide variety of applications in statistical modeling.
+</p>
+<p>They can also be used to generate sentences similar to arbitrary blocks of text. We will explore this application towards the end of the post.</p>
+<h3 id="aside-weighted-random-generation">Aside: Weighted Random Generation</h3>
+<p>The first thing that comes to mind when I think of random generation is still <a href="http://learnyouahaskell.com/for-a-few-monads-more#making-monads">the <code>Prob</code> data type described in LYAH</a>. <a href="https://hackage.haskell.org/package/MonadRandom-0.1.13/docs/Control-Monad-Random.html">The <code>MonadRandom</code> library</a> defines a data type <a href="https://hackage.haskell.org/package/MonadRandom-0.1.13/docs/Control-Monad-Random.html#t:Rand"><code>Rand</code></a> which works, in many ways, in the same way as the <code>Prob</code> data type does (with a bit of extension to produce a transormer, etc.). I won’t go into the full details of how this works, but the basic ideas is that, given a list of outcomes with weights, e.g.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">[(<span class="st">&quot;Heads&quot;</span>, <span class="dv">1</span>), (<span class="st">&quot;Tails&quot;</span>, <span class="dv">1</span>)]</code></pre></div>
+<p>we can – by wrapping it in <code>Rand</code> and giving it a random generator – produce a weighted random outcome, “Heads” or “Tails” with the desired weighting. For a concrete example, here’s a functional program written using the <code>MonadRandom</code> library.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad.Random</span>
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> newStdGen <span class="fu">&gt;&gt;=</span> print <span class="fu">.</span> evalRand coinFlip
+  <span class="kw">where</span> coinFlip <span class="fu">=</span> uniform [<span class="st">&quot;Heads&quot;</span>, <span class="st">&quot;Tails&quot;</span>]</code></pre></div>
+<p><code>uniform</code> constructs a <code>Rand</code> from a list with a uniform distribution, i.e. with each member having the same weight. <code>evalRand</code> takes a <code>Rand</code> and a random generator (we’re using <code>StdGen</code> here with <code>newStdGen</code>) and spits out a weighted random object. Running this will print “Heads” about 50% of the time and “Tails” about 50% of the time.</p>
+<p>Also of note is the <code>fromList</code> combinator, which takes a list of objects and their weights and constructs a <code>Rand</code> object. For example, replacing <code>coinFlip</code> with <code>fromList [(&quot;Heads&quot;, 1), (&quot;Tails&quot;, 1)]</code> yields the same program as above.</p>
+<h3 id="markov-chains-an-intermediate-representation">Markov Chains: An Intermediate Representation</h3>
+<p>In order to model Markov chains, we essentially want to build a graph with weighted edges. We can model edge-weighted graphs using a <code>HashMap</code> from vertices to lists of edges, represented as <code>(vertex, weight)</code> pairs (the vertex the edge points to and its weight).</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Data.HashMap.Lazy</span> <span class="kw">as</span> <span class="dt">M</span>
+<span class="kw">import           </span><span class="dt">Data.Ratio</span>
+
+<span class="kw">type</span> <span class="dt">MarkovI</span> a <span class="fu">=</span> <span class="dt">M.HashMap</span> a (<span class="dt">Maybe</span> [(a, <span class="dt">Rational</span>)])</code></pre></div>
+<p>The <code>MarkovI</code> (<code>I</code> for “intermediate”) data type is a synonym for a lazy <code>HashMap</code> from <code>a</code> to a list of vertex-edge pairs. The only difference here is that we allow the list to be empty by using <code>Maybe</code>, which signifies an “end” state in the chain with no outgoing transitions. We could remove this wrapper and use an empty list to signify the same thing, but this representation works better with <code>MonadRandom</code>, since <code>Rand</code>s can’t be empty, making the translation straightforward.</p>
+<p>You might also be wondering why we need an intermediate representation for Markov chains in the first place. The reason for this is that we can’t arbitrarily insert extra objects/weights into <code>Rand</code>s, and we’ll want to build up the mappings piecemeal. We need some intermediate structure to handle this functionality.</p>
+<p>We can define functions to build up <code>MarkovI</code>s via insertion of objects:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">insertMkvI ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">Rational</span> <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a
+insertMkvI r k v mkv <span class="fu">=</span> M.insert k (<span class="dt">Just</span> <span class="fu">$</span> <span class="kw">case</span> M.lookup k mkv <span class="kw">of</span>
+  <span class="dt">Nothing</span> <span class="ot">-&gt;</span> [(v, r)]
+  <span class="dt">Just</span> xs <span class="ot">-&gt;</span> <span class="kw">case</span> xs <span class="kw">of</span>
+    <span class="dt">Nothing</span> <span class="ot">-&gt;</span> [(v, r)]
+    <span class="dt">Just</span> ys <span class="ot">-&gt;</span> (v, r)<span class="fu">:</span>ys) mkv
+
+<span class="ot">insertEnd ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a
+insertEnd k <span class="fu">=</span> M.insert k <span class="dt">Nothing</span></code></pre></div>
+<p><code>insertMkvI</code> inserts an edge into a <code>MarkovI</code>. Its first argument is the weight for the edge being inserted. Its next two arguments are the state objects to add a transition from/to, respectively, and the fourth is the <code>MarkovI</code> to insert into. <code>insertEnd</code> inserts a state with no outbound transitions into a Markov chain.</p>
+<p>It is worth noting that the <code>Rand</code> object constructed from lists like this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">[(<span class="dt">True</span>, <span class="dv">1</span>), (<span class="dt">True</span>, <span class="dv">1</span>), (<span class="dt">False</span>, <span class="dv">1</span>)]</code></pre></div>
+<p><em>do</em> weight <code>True</code> twice as heavily as <code>False</code>. This will become important later, when talking about a sentence generator.</p>
+<h3 id="markov-chains-final-representation">Markov Chains: Final Representation</h3>
+<p>The final representation of Markov chains simply turns those <code>[(a, Rational)]</code>s in <code>MarkovI</code> into true <code>Rand</code>s.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Control.Monad.Random</span> <span class="kw">as</span> <span class="dt">R</span>
+
+<span class="kw">newtype</span> <span class="dt">Markov</span> g a <span class="fu">=</span> <span class="dt">Markov</span>{<span class="ot"> getMarkov ::</span> <span class="dt">M.HashMap</span> a (<span class="dt">Maybe</span> (<span class="dt">R.Rand</span> g a)) }</code></pre></div>
+<p>We can define a simple conversion function to construct <code>Markov</code>s from the intermediate representation by converting their distribution lists to <code>Rand</code>s via <code>fromList</code>. This is straightforward because empty lists are represented as <code>Nothing</code>, so we don’t have to explicitly deal with that edge case when calling <code>R.fromList</code>, which would normally fail in such a case.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromMarkovI ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> <span class="dt">Markov</span> g a
+fromMarkovI <span class="fu">=</span> <span class="dt">Markov</span> <span class="fu">.</span> M.map (R.fromList <span class="fu">&lt;$&gt;</span>)</code></pre></div>
+<p>The first goal is to be able to – given a state and a random generator – transition to a new state probabalistically. The second goal is to be able to repeat this <code>n</code> times and track the states we pass through.</p>
+<p><code>runMarkov1</code> accomplishes the first goal:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Err</span> <span class="fu">=</span> <span class="dt">String</span>
+<span class="kw">data</span> <span class="dt">Outcome</span> g a <span class="fu">=</span>
+    <span class="dt">Error</span> <span class="dt">Err</span>
+  <span class="fu">|</span> <span class="dt">Val</span> a g
+  <span class="fu">|</span> <span class="dt">End</span>
+    <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)
+
+<span class="ot">runMarkov1 ::</span> (<span class="dt">R.RandomGen</span> g, <span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">Markov</span> g a <span class="ot">-&gt;</span> g <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">Outcome</span> g a
+runMarkov1 mkv gen x <span class="fu">=</span> <span class="kw">case</span> M.lookup x (getMarkov mkv) <span class="kw">of</span>
+  <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="dt">Error</span> <span class="st">&quot;Internal error; cannot find value&quot;</span>
+  <span class="dt">Just</span> rs <span class="ot">-&gt;</span> <span class="kw">case</span> flip R.runRand gen <span class="fu">&lt;$&gt;</span> rs <span class="kw">of</span>
+    <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="dt">End</span>
+    <span class="dt">Just</span> (a, g) <span class="ot">-&gt;</span> <span class="dt">Val</span> a g</code></pre></div>
+<p>First, if the state we’re looking for doesn’t exist, it is impossible to transition out of it, so the computation fails with an internal error. If not, we get a probablistic value out of the transition mappings from the state in question. If there aren’t any, we just <code>End</code> – we cannot transition, but don’t really want to throw an error. If there are values to choose from, we return one along with a new random generator, wrapped in <code>Val</code>.</p>
+<p>Extending this to run <code>n</code> times isn’t too tough. It mostly consists of finagling data types into the representation we want.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">runMarkov ::</span> (<span class="dt">R.RandomGen</span> g, <span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Markov</span> g a <span class="ot">-&gt;</span> g <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">Err</span> [a]
+runMarkov n mkv gen x <span class="fu">=</span> go n
+  <span class="kw">where</span>
+    go m <span class="fu">|</span> m <span class="fu">&lt;=</span> <span class="dv">0</span> <span class="fu">=</span> <span class="dt">Right</span> []
+         <span class="fu">|</span> otherwise <span class="fu">=</span> (x<span class="fu">:</span>) <span class="fu">&lt;$&gt;</span> <span class="kw">case</span> runMarkov1 mkv gen x <span class="kw">of</span>
+            <span class="dt">Val</span> a g <span class="ot">-&gt;</span> runMarkov (n<span class="fu">-</span><span class="dv">1</span>) mkv g a
+            <span class="dt">End</span> <span class="ot">-&gt;</span> <span class="dt">Right</span> []
+            <span class="dt">Error</span> err <span class="ot">-&gt;</span> <span class="dt">Left</span> err</code></pre></div>
+<p>If we hit an <code>End</code>, the simulation terminates because it can’t progress any further. If we get an error along the way, we wrap it in <code>Left</code> and return it. Otherwise, we run <code>runMarkov1</code> repeatedly <code>n</code> times, starting from the previously computed state each time, and collecting the results into a list. If no errors occur, the result will be a list of states passed through while the simulation runs.</p>
+<p>We can now define a <code>fromList</code> function, which builds up a Markov chain from mappings represented in list form.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromList ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a, <span class="dt">R.RandomGen</span> g) <span class="ot">=&gt;</span> [(a, [(a, <span class="dt">Rational</span>)])] <span class="ot">-&gt;</span> <span class="dt">Markov</span> g a
+fromList <span class="fu">=</span> <span class="dt">Markov</span> <span class="fu">.</span> foldl' (flip <span class="fu">$</span> uncurry ins) M.empty
+  <span class="kw">where</span> ins a b m <span class="fu">=</span> <span class="kw">case</span> b <span class="kw">of</span>
+          [] <span class="ot">-&gt;</span> M.insert a <span class="dt">Nothing</span> m
+          _  <span class="ot">-&gt;</span> M.insert a (<span class="dt">Just</span> <span class="fu">$</span> R.fromList b) m</code></pre></div>
+<p>With this at our disposal, it’s easy to model and run the example Markov chain I mentioned earlier.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">example ::</span> <span class="dt">Markov</span> <span class="dt">PureMT</span> <span class="dt">String</span>
+example <span class="fu">=</span> fromList [(<span class="st">&quot;E&quot;</span>, [(<span class="st">&quot;E&quot;</span>, <span class="dv">3</span>), (<span class="st">&quot;A&quot;</span>, <span class="dv">7</span>)]), (<span class="st">&quot;A&quot;</span>, [(<span class="st">&quot;E&quot;</span>, <span class="dv">4</span>), (<span class="st">&quot;A&quot;</span>, <span class="dv">6</span>)])]</code></pre></div>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">λ<span class="fu">&gt;</span> <span class="fu">:</span>m <span class="fu">+</span> <span class="dt">System.Random.Mersenne.Pure64</span>
+λ<span class="fu">&gt;</span> gen <span class="ot">&lt;-</span> newPureMT
+λ<span class="fu">&gt;</span> runMarkov <span class="dv">15</span> example gen <span class="st">&quot;E&quot;</span>
+<span class="dt">Right</span> [<span class="st">&quot;E&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;A&quot;</span>]</code></pre></div>
+<p>The Markov chain passes through “A” a bit more often than “E”, which is to be expected from its definition.</p>
+<h3 id="towards-a-sentence-generator">Towards a Sentence Generator</h3>
+<p>The process of sentence generation using Markov chains is pretty simple: For each word in a “seed text,” find the probability of each other word proceeding it. Build a Markov chain out of these probabilities, using words as states, and run it a desired number of times. In order to do this, we’ll first need a utility function which takes pairs of elements (which will represent words along with the word following them in a “seed text”) and produces a Markov chain out of them.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">insertMkvPairsInto ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> [(a, a)] <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a
+insertMkvPairsInto mkv [] <span class="fu">=</span> mkv
+insertMkvPairsInto mkv ps <span class="fu">=</span> insertEnd lst <span class="fu">$</span> foldl' (flip (uncurry (insertMkvI <span class="dv">1</span>))) mkv ps
+  <span class="kw">where</span> lst <span class="fu">=</span> snd <span class="fu">$</span> last ps</code></pre></div>
+<p>For each pair <code>(x, y)</code>, we insert a transition <code>x -&gt; y</code> with weight 1 into the Markov chain, and insert the final value in as an <code>End</code>. The reason this works is because of something I mentioned earlier: <code>Rand</code> handles distributions like <code>[(True, 1), (True, 1), (False, 1)]</code> properly. We build lists very similar to this one when processing a block of text for sentence generation, and when finally converting to <code>Markov</code>, all of that plumbing gets handled automatically. As a final note, we’ll use that <code>End</code> construct to mark the end of a sentence.</p>
+<p>The next thing is actually building a <code>MarkovI</code> from a sentence – this can be done by zipping the list of its words with the tail of it and using the aforementioned function, like so:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Data.Text</span> <span class="kw">as</span> <span class="dt">T</span>
+<span class="ot">wordPairs ::</span> <span class="dt">T.Text</span> <span class="ot">-&gt;</span> [(<span class="dt">T.Text</span>, <span class="dt">T.Text</span>)]
+wordPairs <span class="fu">=</span> (zip <span class="fu">&lt;*&gt;</span> tail) <span class="fu">.</span> T.words
+
+<span class="ot">insertSentence ::</span> <span class="dt">MarkovI</span> <span class="dt">T.Text</span> <span class="ot">-&gt;</span> <span class="dt">T.Text</span> <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> <span class="dt">T.Text</span>
+insertSentence mkv <span class="fu">=</span> insertMkvPairsInto mkv <span class="fu">.</span> wordPairs</code></pre></div>
+<p><small>wordPairs could be written more simply in a pointful style, but I think the point{free, less} version is cool. :)</small></p>
+<p>Now, to build a Markov chain from a bunch of sentences (be it a paragraph, a book), we can just fold into an empty <code>MarkovI</code> and convert it from the intermediate representation:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromSentences ::</span> <span class="dt">R.RandomGen</span> g <span class="ot">=&gt;</span> [<span class="dt">T.Text</span>] <span class="ot">-&gt;</span> <span class="dt">Markov</span> g <span class="dt">T.Text</span>
+fromSentences <span class="fu">=</span> fromMarkovI <span class="fu">.</span> foldl' insertSentence M.empty</code></pre></div>
+<p>The rest is mostly plumbing:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">{-# LANGUAGE OverloadedStrings #-}</span>
+<span class="kw">import </span><span class="dt">System.Random.Mersenne.Pure64</span>
+
+<span class="ot">runFromSentences ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> [<span class="dt">T.Text</span>] <span class="ot">-&gt;</span> <span class="dt">IO</span> (<span class="dt">Either</span> <span class="dt">Err</span> <span class="dt">T.Text</span>)
+runFromSentences n sentences <span class="fu">=</span> <span class="kw">do</span>
+  g <span class="ot">&lt;-</span> newPureMT
+  <span class="kw">let</span> hds <span class="fu">=</span> map (head <span class="fu">.</span> T.words) sentences
+  seed <span class="ot">&lt;-</span> R.uniform hds
+  return <span class="fu">$</span> T.unwords <span class="fu">&lt;$&gt;</span> runMarkov n (fromSentences sentences) g seed
+
+<span class="ot">test ::</span> [<span class="dt">T.Text</span>]
+test <span class="fu">=</span> [
+  <span class="st">&quot;I am a monster.&quot;</span>,
+  <span class="st">&quot;I am a rock star.&quot;</span>,
+  <span class="st">&quot;I want to go to Hawaii.&quot;</span>,
+  <span class="st">&quot;I want to eat a hamburger.&quot;</span>,
+  <span class="st">&quot;I have a really big headache.&quot;</span>,
+  <span class="st">&quot;Haskell is a fun language!&quot;</span>,
+  <span class="st">&quot;Go eat a big hamburger!&quot;</span>,
+  <span class="st">&quot;Markov chains are fun to use!&quot;</span>
+  ]</code></pre></div>
+<p>We get a new <a href="http://hackage.haskell.org/package/mersenne-random-pure64-0.2.0.2/docs/System-Random-Mersenne-Pure64.html"><code>PureMT</code></a> to use for a generator, and grab a random word (from the beginning of a sentence) to use as the starting state. We then run a markov simulation, collecting the words we pass through, and finally call <code>T.unwords</code> on the result to build a sentence from the words in sequence. Running this yields some interesting statements (and a lot of nonsensical ones), for example:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">λ<span class="fu">&gt;</span> runFromSentences <span class="dv">10</span> test
+<span class="dt">Right</span> <span class="st">&quot;Haskell is a hamburger.&quot;</span>
+<span class="dt">Right</span> <span class="st">&quot;Go eat a really big headache.&quot;</span>
+<span class="dt">Right</span> <span class="st">&quot;I am a fun to go to go to eat&quot;</span></code></pre></div>
+<h3 id="application-rap-candy">Application: Rap Candy</h3>
+<p>As you might imagine, this type of thing gets more interesting when you’re working with a larger set of sentences. For me, I thought it would be fun(ny) to take lines from Eminem’s music as “sentences,” make tweet-sized snippets from them, and automate a twitter bot to post one every day. Most of the tweets are pretty nonsensical (and very vulgar), here’s one:</p>
+<blockquote class="twitter-tweet" lang="en">
+<p>
+Now I'm on a magazine
+Take a catastrophe for me
+Cause of New sh*t, exclusive whoo kid
+I'm the first king of danger, intertwine it
+</p>
+— rapcandy (<span class="citation">@_rapcandy</span>) <a href="https://twitter.com/_rapcandy/statuses/495019304883331072">August 1, 2014</a>
+</blockquote>
+<script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+<p><a href="https://github.com/5outh/rapcandy">rapcandy is open source</a>. Its Markov chain mechanism differs slightly from what was presented here, but the ideas are the same. It also includes a simple example of how to connect to Twitter using Haskell (which I’ll be covering separately in a short blog post soon), as well as web-scraper written in node that I used to download Eminem’s lyrics programmatically. Feel free to browse the code and follow <a href="https://twitter.com/_rapcandy">@_rapcandy on Twitter</a>.</p>
+<p>I’ve also boxed up (most of) the code from this blog post into a small cabal package that you can use if you’d like to play around with your own Markov chain based applications. <a href="https://github.com/5outh/markov-sim">You can download markov-sim and browse its source here</a>.</p>
+</div>
+
+<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+      </section>
+      <footer class="footer">
+        © 2016 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <script src="js/scale.fix.js"></script>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>

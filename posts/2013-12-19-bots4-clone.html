@@ -1,0 +1,486 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Abstract Nonsense</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css">
+  </head>
+  <body>
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="../contact.html">About</a></li>
+</ul>
+
+
+        <h1 id="blog_title">Abstract Nonsense</h1>
+      </header>
+      <section>
+        
+          <h3 class="post-title">Making a Bots2 clone using Lenses and Pipes</h3>
+        
+        <p>
+<div class="post_body">
+	<h4 id="about-bots2">About bots2</h4>
+<p>When I was in high school, I came across an internet game called bots2. Bots2 was a multiplayer game where people can log in, customize a robot, and autonomously fight against pre-built AI and other human players. The game would progress in rounds, wherein each robot would attempt to destroy its adversary. The game would continue until one robot dropped below 0 health, at which point the other robot would emerge victorious.</p>
+<p>Bots2 was purportedly <a href="http://bots4.net/documentation">attacked by hackers</a> and never brought back up. However, <a href="http://edmazur.com/">someone</a> has taken the liberty of creating a clone of the old game, named bots4. If you’re interested, <a href="http://bots4.net/">you can play bots4 here</a>. In fact, I might recommend playing around with it for a minute or two, because we’ll be building a (very) simple version of bots2 in this post!</p>
+<h4 id="preliminaries">Preliminaries</h4>
+<p>I only assume a basic familiarity with monad transformers in this post. If you need an introduction, <a href="http://blog.sigfpe.com">sigfpe</a> has a <a href="http://blog.sigfpe.com/2006/05/grok-haskell-monad-transformers.html">great introduction to them on his blog</a>. We’ll be using Russell O’Connor’s <a href="http://hackage.haskell.org/package/lens-family">Lens-Family</a> and Gabriel Gonzalez’ <a href="http://hackage.haskell.org/package/pipes">Pipes</a> libraries to make the implementation easy (and educational!).</p>
+<p>I also want to give a shout out to Gabriel, who was generous enough to personally review and edit my initial draft of the code in this post – it looks much better than it did before, thanks to him.</p>
+<p>Without further ado, let’s get started!</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import           </span><span class="dt">Pipes</span>
+<span class="kw">import qualified</span> <span class="dt">Pipes.Prelude</span> <span class="kw">as</span> <span class="dt">P</span>
+<span class="kw">import qualified</span> <span class="dt">System.Random</span> <span class="kw">as</span> <span class="dt">R</span>
+<span class="kw">import           </span><span class="dt">Lens.Family2</span>             
+<span class="kw">import           </span><span class="dt">Lens.Family2.Stock</span>       
+<span class="kw">import           </span><span class="dt">Lens.Family2.State.Lazy</span> 
+<span class="kw">import           </span><span class="dt">Control.Monad.Trans.State</span>
+<span class="kw">import           </span><span class="dt">Control.Monad</span>
+<span class="kw">import           </span><span class="dt">Control.Concurrent</span>(threadDelay)</code></pre></div>
+<h4 id="modeling-bots">Modeling Bots</h4>
+<p>The game we wish to build pits two bots against each other, who will fight to the death based on who has the better stats (and a bit of randomness). We’ll need to be able to model each bot as an entity along with its specific stats.</p>
+<p>During each round, each bot:</p>
+<ol style="list-style-type: decimal">
+<li>Deals damage to its opponent</li>
+<li>Has a chance to block (and take half damage)</li>
+<li>Has a chance to dodge (and take no damage)</li>
+</ol>
+<p>We’ll model a <code>Bot</code> like so:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Bot</span> <span class="fu">=</span> <span class="dt">Bot</span>
+    { _<span class="ot">name ::</span> <span class="dt">String</span>
+    , _<span class="ot">str  ::</span> <span class="dt">Int</span>
+    , _<span class="ot">dex  ::</span> <span class="dt">Int</span>
+    , _<span class="ot">con  ::</span> <span class="dt">Int</span>
+    , _<span class="ot">hp   ::</span> <span class="dt">Int</span>
+    } <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)</code></pre></div>
+<p>We’ll use <code>str</code> to modify damage output, <code>dex</code> to modify dodge chance, <code>con</code> to modify block chance, and <code>hp</code> to denote the amount of health the bot has remaining. We’ll also tack on a <code>name</code> so we can print out more informative messages during the game. Note the prefix <code>_</code> on each field; these are here so we can give our <code>Lens</code>es nicer names.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">name ::</span> <span class="dt">Lens'</span> <span class="dt">Bot</span> <span class="dt">String</span>
+str, dex, con,<span class="ot"> hp ::</span> <span class="dt">Lens'</span> <span class="dt">Bot</span> <span class="dt">Int</span>
+name k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\nm' <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm' s d c h) (k nm)
+str  k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\s'  <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm s' d c h) (k s )
+dex  k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\d'  <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm s d' c h) (k d )
+con  k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\c'  <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm s d c' h) (k c )
+hp   k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\h'  <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm s d c h') (k h )</code></pre></div>
+<p>We can now define some <code>Lens</code>es for our <code>Bot</code> fields. We do this manually because it’s relatively simple and to avoid the <code>TemplateHaskell</code> requirement that comes along with Edward Kmett’s larger <a href="http://hackage.haskell.org/package/lens-3.10.0.1">Lens</a> library. Given a more complicated system, we might choose to use <a href="http://hackage.haskell.org/package/lens-3.10.0.1">Lens</a> to automatically generate these. However, this is a small program so the overhead isn’t necessary. Also, don’t worry too much about the declarations of the <code>Lens</code>es above: Just know that they allow us to do some cool stuff later on.</p>
+<p>With these <code>Lens</code>es defined and our <code>Bot</code> data type in place, we can move on to defining more of the game’s semantics.</p>
+<h4 id="more-types">More Types</h4>
+<p>We’ll need a data type to represent a bot’s actions during a single round, and a game state representing the global state of the game:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Event</span>    <span class="fu">=</span> (<span class="dt">Int</span>, <span class="dt">Bool</span>, <span class="dt">Bool</span>)
+<span class="kw">type</span> <span class="dt">BotState</span> <span class="fu">=</span> (<span class="dt">R.StdGen</span>, (<span class="dt">Bot</span>, <span class="dt">Bot</span>))</code></pre></div>
+<p>The <code>Event</code> type defines a round of a single Bot’s behavior in a 3-tuple – the first parameter corresponds to damage dealt, the second to whether or not the bot dodged, and the third to whether or not the bot blocked. We will process these events later.</p>
+<p>The <code>BotState</code> type boxes up a <code>StdGen</code> for us to use when generating random events, and a 2-tuple of <code>Bot</code>s – the player character’s bot and the enemy AI. This is all the global state we need in our game.</p>
+<p>We can make some new <code>Lens</code>es for these types, given that 2-tuples are easily indexed using <code>Lens</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">generator ::</span> <span class="dt">Lens'</span> <span class="dt">BotState</span> <span class="dt">R.StdGen</span>
+generator <span class="fu">=</span> _1
+
+<span class="ot">player ::</span> <span class="dt">Lens'</span> <span class="dt">BotState</span> <span class="dt">Bot</span>
+player <span class="fu">=</span> _2<span class="fu">.</span>_1
+
+<span class="ot">enemy ::</span> <span class="dt">Lens'</span> <span class="dt">BotState</span> <span class="dt">Bot</span>
+enemy <span class="fu">=</span> _2<span class="fu">.</span>_2</code></pre></div>
+<p>Here we create a <code>Lens</code> that references the <code>StdGen</code> of the <code>BotState</code>, using <code>_1</code>. We can also compose <code>Lens</code>es using <code>.</code> (from the <code>Prelude</code>!) and we use this functionality with the simple <code>Lens</code>es <code>_1</code> and <code>_2</code> to make <code>Lens</code>es referencing the player and enemy AI in a <code>BotState</code>.</p>
+<p>Well, that’s about all the type declaring we need to do. Now we can get on with piecing together the actual gameplay.</p>
+<h4 id="generating-events">Generating Events</h4>
+<p>Now comes the fun part: actually programming the game mechanics. Essentially what we’d like to do is the following:</p>
+<ol style="list-style-type: decimal">
+<li>Generate an event for the player and enemy at the same time.</li>
+<li>Process each event.</li>
+<li>If either bot is dead, end the game and print an ending message.</li>
+</ol>
+<p>Here we’ll focus on (1), generating events. Let’s take a look at some code:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">genEvent ::</span> <span class="dt">Bot</span> <span class="ot">-&gt;</span> <span class="dt">StateT</span> <span class="dt">R.StdGen</span> <span class="dt">IO</span> <span class="dt">Event</span>
+genEvent bot <span class="fu">=</span> <span class="kw">do</span>
+    [n, m, r] <span class="ot">&lt;-</span> replicateM <span class="dv">3</span> <span class="fu">$</span> state (R.randomR (<span class="dv">0</span>, <span class="dv">100</span>))
+    <span class="kw">let</span> dodge <span class="fu">=</span> n <span class="fu">&lt;</span> <span class="dv">100</span> <span class="fu">*</span> bot<span class="fu">^.</span>dex <span class="ot">`div`</span> (bot<span class="fu">^.</span>dex <span class="fu">+</span> <span class="dv">50</span>)
+        block <span class="fu">=</span> m <span class="fu">&lt;</span> <span class="dv">100</span> <span class="fu">*</span> bot<span class="fu">^.</span>con <span class="ot">`div`</span> (bot<span class="fu">^.</span>con <span class="fu">+</span> <span class="dv">30</span>)
+        dmg   <span class="fu">=</span> bot<span class="fu">^.</span>str <span class="fu">+</span> (bot<span class="fu">^.</span>str <span class="fu">*</span> r) <span class="ot">`div`</span> <span class="dv">30</span>
+    return (dmg, dodge, block)</code></pre></div>
+<p>In order to generate an event for a bot, we grab three numbers between 0 and 100:</p>
+<ul>
+<li>n, which helps determine if the bot dodges,</li>
+<li>m, which helps determine if the bot blocks,</li>
+<li>and r, which helps determine how much damage the bot does.</li>
+</ul>
+<p>We can use the <code>state</code> combinator here to lift the computation <code>(R.randomR (0, 100))</code> to a computation in the <code>StateT</code> monad. We then perform some arithmetic using the random numbers we grabbed along with the <code>dex</code>, <code>con</code>, and <code>str</code> stats from our <code>Bot</code>. We access these using the <code>^.</code> combinator from the <code>lens-family</code>, using the <code>Lens</code>es we defined above.</p>
+<p>Important note: We are producing the amount of damage a bot <em>deals</em> here. We will want to process events according to how much damage each bot <em>receives</em>, which we’ll handle in a minute.</p>
+<p>Now that we can generate single events, we need a way of mapping them to specific bots. We’ll define a new function, <code>genEventPair</code>, to generate <em>two</em> events at once, corresponding to the player and the enemy in the game.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">genEventPair ::</span> <span class="dt">StateT</span> <span class="dt">BotState</span> <span class="dt">IO</span> (<span class="dt">Event</span>, <span class="dt">Event</span>)
+genEventPair <span class="fu">=</span> <span class="kw">do</span>
+    p <span class="ot">&lt;-</span> use player
+    e <span class="ot">&lt;-</span> use enemy
+    zoom generator <span class="fu">$</span> liftM2 switchDmgs (genEvent p) (genEvent e)
+  <span class="kw">where</span>
+    switchDmgs (a, b, c) (d, e, f) <span class="fu">=</span> ( (d, b, c), (a, e, f) )</code></pre></div>
+<p>There are a couple of new things at play here. First, on <code>use</code>:</p>
+<p>Note the use of our <code>Lens</code>es <code>player</code> and <code>enemy</code>. To access the underlying state in a <code>StateT</code>, we typically call the function <code>lift</code>. Here instead we call the function <code>use</code> from <code>Lens.Family2.State</code>, which allows us to specify which <em>piece</em> of our <code>BotState</code> we want to get. We do just this in order to generate events for both the <code>player</code> and <code>enemy</code>, using the aforementioned <code>Lens</code>es.</p>
+<p>Next, if you were looking closely you might have noticed that <code>genEvent</code> isn’t operating in the same monad as <code>genEventPair</code>, yet we use <code>genEvent</code> inside of <code>genEventPair</code>! We are able do do this using the <code>zoom</code> combinator.</p>
+<p><code>zoom</code> lifts a stateful operation on one field to a stateful operation on the entire state. Here, we’re zooming into <code>generator</code> (a <code>Lens</code> on our <code>StdGen</code>) and lifting the (stateful) generation of events for both the player and enemy into a (stateful) generation of <em>two</em> events while preserving player and enemy states. The fact that we can <code>zoom</code> into <code>genEvent</code> helps out the declaration immensely. It removes a lot of plumbing that we would have had to deal with in order to have <code>genEvent</code> operate on an underlying state of type <code>BotState</code> and allows the type of the computation to be more explicit.</p>
+<p>Finally, Note the use of <code>switchDmgs</code> here: This was an ad hoc way to switch around damage dealt and damage sustained. <code>genEventPair</code> produces events harboring damage <em>taken</em>, which is what we need in order to process them in a nice way.</p>
+<h4 id="processing-events">Processing Events</h4>
+<p>Now that we’re able to generate events and keep track of our game state, the next thing we need to do is actually process these events and update game state. We introduce <code>resolveEvent</code> to take care of this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">resolveEvent ::</span> (<span class="dt">Monad</span> m) <span class="ot">=&gt;</span> (<span class="dt">Event</span>, <span class="dt">Event</span>) <span class="ot">-&gt;</span> <span class="dt">StateT</span> <span class="dt">BotState</span> m [(<span class="dt">Bot</span>, <span class="dt">Event</span>)]
+resolveEvent (p_evt, e_evt) <span class="fu">=</span> <span class="kw">do</span>
+    zoom player (resolve p_evt)
+    zoom enemy  (resolve e_evt)
+    p <span class="ot">&lt;-</span> use player
+    e <span class="ot">&lt;-</span> use enemy
+    return [(p, p_evt), (e, e_evt)]
+
+<span class="ot">resolve ::</span> (<span class="dt">Monad</span> m) <span class="ot">=&gt;</span> <span class="dt">Event</span> <span class="ot">-&gt;</span> <span class="dt">StateT</span> <span class="dt">Bot</span> m ()
+resolve (dmg, ddg, blk)
+    <span class="fu">|</span> ddg       <span class="fu">=</span> return ()
+    <span class="fu">|</span> blk       <span class="fu">=</span> hp <span class="fu">-=</span> dmg <span class="ot">`div`</span> <span class="dv">2</span>
+    <span class="fu">|</span> otherwise <span class="fu">=</span> hp <span class="fu">-=</span> dmg</code></pre></div>
+<p>First let’s look at the <code>resolve</code> function. Here we are taking an event and updating a <code>Bot</code>’s state based on that event. The implementation is straightforward, especially given that we have the <code>-=</code> <code>Lens</code> combinator at our disposal – this allows us to write imperative-looking code that does exactly what you would expect it to.</p>
+<p>In the <code>resolveEvent</code> function, you should see some similarities to the above section. We can again use <code>zoom</code> and <code>use</code> in order to lift computations and retrieve state just as before, but we’re updating the main game state now. We produce two 2-tuples containing modified bots and their attached event that was processed during each turn.</p>
+<p>At this point, the game logic is actually finished. We have ways to produce and deal with game events that modify game state, and provided that we can actually link these functions together (which we can, as we’ll see later), the game will actually run. All that we need to do now is handle IO and bot death. This is where <code>Pipes</code> comes in.</p>
+<h4 id="pipes-and-io">Pipes and IO</h4>
+<p>Let’s get the boring stuff out of the way first. I mentioned above that we have yet to deal with two major components of our game: IO and bot death. Let’s first define some simple functions to deal with these:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">dead ::</span> <span class="dt">Bot</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span>
+dead <span class="fu">=</span> (<span class="fu">&lt;=</span> <span class="dv">0</span>) <span class="fu">.</span> view hp
+
+<span class="ot">printBot ::</span> <span class="dt">Bot</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> ()
+printBot bot <span class="fu">=</span> putStrLn <span class="fu">$</span> bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; has &quot;</span> <span class="fu">++</span> show (bot<span class="fu">^.</span>hp) <span class="fu">++</span> <span class="st">&quot; hp remaining.&quot;</span>
+
+<span class="ot">printEvent ::</span> <span class="dt">Bot</span> <span class="ot">-&gt;</span> <span class="dt">Event</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> ()
+printEvent bot (_, <span class="dt">True</span>, _) <span class="fu">=</span> putStrLn <span class="fu">$</span>
+  bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; dodges the attack and takes no damage!&quot;</span>
+printEvent bot (d, _, <span class="dt">True</span>) <span class="fu">=</span> putStrLn <span class="fu">$</span> 
+  bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; blocks and takes half (&quot;</span> <span class="fu">++</span> show (d <span class="ot">`div`</span> <span class="dv">2</span>) <span class="fu">++</span> <span class="st">&quot;) damage!&quot;</span>
+printEvent bot (d, _,    _) <span class="fu">=</span> putStrLn <span class="fu">$</span> 
+  bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; takes &quot;</span> <span class="fu">++</span> show d <span class="fu">++</span> <span class="st">&quot; damage.&quot;</span></code></pre></div>
+<p>Here we again make use of our <code>Lens</code>es (these are handy, huh?). We use the <code>view</code> function in order to get the health of our bot in <code>dead</code>, and check whether its hp is less than 0 in the usual fashion. <code>view</code> is just a prefix synonym for the infix <code>^.</code> that we’ve been using all this time. Speaking of which, we use the <code>^.</code> combinator heavily in both <code>printEvent</code> and <code>printBot</code> to handle the string-handling plumbing. Since these functions essentially tell you what they’re doing implicitly, I’ll omit an extensive explanation.</p>
+<p>Now that we have ways to print <code>Bot</code>s and <code>Event</code>s and check for bot death, the last thing we need to do is actually perform these things the context of our game. A <code>Consumer</code> from the <code>Pipes</code> library will handle this nicely for us:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">printGame ::</span> <span class="dt">Consumer</span> [(<span class="dt">Bot</span>, <span class="dt">Event</span>)] (<span class="dt">StateT</span> <span class="dt">BotState</span> <span class="dt">IO</span>) ()
+printGame <span class="fu">=</span> <span class="kw">do</span>
+    botEvents<span class="fu">@</span>[(b1, e1), (b2, e2)] <span class="ot">&lt;-</span> await
+    (lift <span class="fu">.</span> lift) <span class="fu">$</span> <span class="kw">do</span>
+        forM_ botEvents <span class="fu">$</span> \be<span class="fu">@</span>(bot, event) <span class="ot">-&gt;</span> <span class="kw">do</span>
+            uncurry printEvent be
+            printBot bot
+            threadDelay <span class="dv">500000</span>
+            when (dead bot) <span class="fu">$</span> putStrLn <span class="fu">$</span> bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; died!&quot;</span>
+        putStrLn <span class="fu">$</span> <span class="kw">case</span> (dead b1, dead b2) <span class="kw">of</span>
+            (<span class="dt">True</span> , <span class="dt">True</span> ) <span class="ot">-&gt;</span> <span class="st">&quot;It was a tie!&quot;</span>
+            (<span class="dt">True</span> , <span class="dt">False</span>) <span class="ot">-&gt;</span> b2<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; wins!&quot;</span>
+            (<span class="dt">False</span>, <span class="dt">True</span> ) <span class="ot">-&gt;</span> b1<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; wins!&quot;</span>
+            _              <span class="ot">-&gt;</span> <span class="st">&quot;-----------------&quot;</span>
+    unless (any (dead <span class="fu">.</span> fst) botEvents) printGame</code></pre></div>
+<p>We <code>await</code> two <code>(Bot, Event)</code>s (from where, you might ask? We’ll see in a moment.) and essentially handle all of the plumbing here. For each pair of bots and events, we print the event, print the bot, then wait half a second with <code>threadDelay</code> (otherwise the game would run too quickly and we wouldn’t see it play out). With a <code>Consumer</code> like this, we need to loop until we’ve consumed all of the input we want, so we use the <code>when</code> and <code>unless</code> functions from <code>Control.Monad</code> as indicators of when to do so. If a bot dies, we stop – we also print out some information about who died and who won the game.</p>
+<h4 id="running-the-game">Running the Game</h4>
+<p>Okay, so I say that we have everything we need now, but you might ask…how do I run this? Let’s take a look at a program that pits two bots – a good guy and a bad guy – against one another, and we’ll dissect it.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">runGame ::</span> <span class="dt">IO</span> ()
+runGame <span class="fu">=</span> <span class="kw">do</span>
+    gen <span class="ot">&lt;-</span> R.getStdGen
+    <span class="kw">let</span> player <span class="fu">=</span> <span class="dt">Bot</span> <span class="st">&quot;The Good Guy&quot;</span> <span class="dv">19</span> <span class="dv">13</span> <span class="dv">12</span> <span class="dv">200</span>
+        enemy  <span class="fu">=</span> <span class="dt">Bot</span> <span class="st">&quot;The Bad Guy&quot;</span>  <span class="dv">14</span> <span class="dv">6</span>  <span class="dv">10</span> <span class="dv">200</span>
+        startState <span class="fu">=</span> (gen, (player, enemy))
+    flip evalStateT startState 
+      <span class="fu">$</span> runEffect 
+      <span class="fu">$</span> lift (genEventPair <span class="fu">&gt;&gt;=</span> resolveEvent) <span class="fu">&gt;~</span> printGame</code></pre></div>
+<p>In the first few lines, we simply set up an initial state for the game. The real “stuff” happens in the line starting with <code>flip evalStateT</code>. We’ll work through this at a type level from the inside-out. First, we perform <code>genEventPair &gt;&gt;= resolveEvent</code>, which effectively handles the logic we talked about earlier and produces a <code>StateT BotState IO [(Bot, Event)]</code>. From here, we <code>lift</code> the computation into an <code>Effect (StateT BotState IO) [(Bot, Event)]</code>, which we then repeatedly pipe into <code>printGame</code> with <code>&gt;~</code>. After all of this, we <code>runEffect</code> to extract the <code>StateT BotState IO [(Bot, Event)]</code> from the computation, and finally evaluate the function using <code>evalStateT</code>. Phew!</p>
+<p>In any case, we can now run our program and execute the game…</p>
+<div class="sourceCode"><pre class="sourceCode c"><code class="sourceCode c">*Main&gt; runGame
+The Good Guy takes <span class="dv">15</span> damage.
+The Good Guy has <span class="dv">285</span> hp remaining.
+The Bad Guy takes <span class="dv">29</span> damage.
+The Bad Guy has <span class="dv">171</span> hp remaining.
+-----------------
+The Good Guy dodges the attack and takes no damage!
+The Good Guy has <span class="dv">285</span> hp remaining.
+The Bad Guy takes <span class="dv">20</span> damage.
+The Bad Guy has <span class="dv">151</span> hp remaining.
+-----------------
+The Good Guy blocks and takes half (<span class="dv">24</span>) damage!
+The Good Guy has <span class="dv">261</span> hp remaining.
+The Bad Guy takes <span class="dv">34</span> damage.
+The Bad Guy has <span class="dv">117</span> hp remaining.
+-----------------
+The Good Guy takes <span class="dv">46</span> damage.
+The Good Guy has <span class="dv">215</span> hp remaining.
+The Bad Guy takes <span class="dv">19</span> damage.
+The Bad Guy has <span class="dv">98</span> hp remaining.
+-----------------
+The Good Guy takes <span class="dv">32</span> damage.
+The Good Guy has <span class="dv">183</span> hp remaining.
+The Bad Guy takes <span class="dv">37</span> damage.
+The Bad Guy has <span class="dv">61</span> hp remaining.
+-----------------
+The Good Guy dodges the attack and takes no damage!
+The Good Guy has <span class="dv">183</span> hp remaining.
+The Bad Guy takes <span class="dv">12</span> damage.
+The Bad Guy has <span class="dv">49</span> hp remaining.
+-----------------
+The Good Guy takes <span class="dv">24</span> damage.
+The Good Guy has <span class="dv">159</span> hp remaining.
+The Bad Guy takes <span class="dv">23</span> damage.
+The Bad Guy has <span class="dv">26</span> hp remaining.
+-----------------
+The Good Guy dodges the attack and takes no damage!
+The Good Guy has <span class="dv">159</span> hp remaining.
+The Bad Guy takes <span class="dv">36</span> damage.
+The Bad Guy has -<span class="dv">10</span> hp remaining.
+The Bad Guy died!
+The Good Guy wins!</code></pre></div>
+<p>…and behold, the good guy wins (this time)!</p>
+<p><a href="https://gist.github.com/5outh/8049361">View full source on GitHub</a>.</p>
+<p>- Ben</p>
+</div>
+</p>
+        
+<div class="post_body">
+	<h4 id="about-bots2">About bots2</h4>
+<p>When I was in high school, I came across an internet game called bots2. Bots2 was a multiplayer game where people can log in, customize a robot, and autonomously fight against pre-built AI and other human players. The game would progress in rounds, wherein each robot would attempt to destroy its adversary. The game would continue until one robot dropped below 0 health, at which point the other robot would emerge victorious.</p>
+<p>Bots2 was purportedly <a href="http://bots4.net/documentation">attacked by hackers</a> and never brought back up. However, <a href="http://edmazur.com/">someone</a> has taken the liberty of creating a clone of the old game, named bots4. If you’re interested, <a href="http://bots4.net/">you can play bots4 here</a>. In fact, I might recommend playing around with it for a minute or two, because we’ll be building a (very) simple version of bots2 in this post!</p>
+<h4 id="preliminaries">Preliminaries</h4>
+<p>I only assume a basic familiarity with monad transformers in this post. If you need an introduction, <a href="http://blog.sigfpe.com">sigfpe</a> has a <a href="http://blog.sigfpe.com/2006/05/grok-haskell-monad-transformers.html">great introduction to them on his blog</a>. We’ll be using Russell O’Connor’s <a href="http://hackage.haskell.org/package/lens-family">Lens-Family</a> and Gabriel Gonzalez’ <a href="http://hackage.haskell.org/package/pipes">Pipes</a> libraries to make the implementation easy (and educational!).</p>
+<p>I also want to give a shout out to Gabriel, who was generous enough to personally review and edit my initial draft of the code in this post – it looks much better than it did before, thanks to him.</p>
+<p>Without further ado, let’s get started!</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import           </span><span class="dt">Pipes</span>
+<span class="kw">import qualified</span> <span class="dt">Pipes.Prelude</span> <span class="kw">as</span> <span class="dt">P</span>
+<span class="kw">import qualified</span> <span class="dt">System.Random</span> <span class="kw">as</span> <span class="dt">R</span>
+<span class="kw">import           </span><span class="dt">Lens.Family2</span>             
+<span class="kw">import           </span><span class="dt">Lens.Family2.Stock</span>       
+<span class="kw">import           </span><span class="dt">Lens.Family2.State.Lazy</span> 
+<span class="kw">import           </span><span class="dt">Control.Monad.Trans.State</span>
+<span class="kw">import           </span><span class="dt">Control.Monad</span>
+<span class="kw">import           </span><span class="dt">Control.Concurrent</span>(threadDelay)</code></pre></div>
+<h4 id="modeling-bots">Modeling Bots</h4>
+<p>The game we wish to build pits two bots against each other, who will fight to the death based on who has the better stats (and a bit of randomness). We’ll need to be able to model each bot as an entity along with its specific stats.</p>
+<p>During each round, each bot:</p>
+<ol style="list-style-type: decimal">
+<li>Deals damage to its opponent</li>
+<li>Has a chance to block (and take half damage)</li>
+<li>Has a chance to dodge (and take no damage)</li>
+</ol>
+<p>We’ll model a <code>Bot</code> like so:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Bot</span> <span class="fu">=</span> <span class="dt">Bot</span>
+    { _<span class="ot">name ::</span> <span class="dt">String</span>
+    , _<span class="ot">str  ::</span> <span class="dt">Int</span>
+    , _<span class="ot">dex  ::</span> <span class="dt">Int</span>
+    , _<span class="ot">con  ::</span> <span class="dt">Int</span>
+    , _<span class="ot">hp   ::</span> <span class="dt">Int</span>
+    } <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)</code></pre></div>
+<p>We’ll use <code>str</code> to modify damage output, <code>dex</code> to modify dodge chance, <code>con</code> to modify block chance, and <code>hp</code> to denote the amount of health the bot has remaining. We’ll also tack on a <code>name</code> so we can print out more informative messages during the game. Note the prefix <code>_</code> on each field; these are here so we can give our <code>Lens</code>es nicer names.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">name ::</span> <span class="dt">Lens'</span> <span class="dt">Bot</span> <span class="dt">String</span>
+str, dex, con,<span class="ot"> hp ::</span> <span class="dt">Lens'</span> <span class="dt">Bot</span> <span class="dt">Int</span>
+name k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\nm' <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm' s d c h) (k nm)
+str  k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\s'  <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm s' d c h) (k s )
+dex  k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\d'  <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm s d' c h) (k d )
+con  k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\c'  <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm s d c' h) (k c )
+hp   k (<span class="dt">Bot</span> nm s d c h)  <span class="fu">=</span> fmap (\h'  <span class="ot">-&gt;</span> <span class="dt">Bot</span> nm s d c h') (k h )</code></pre></div>
+<p>We can now define some <code>Lens</code>es for our <code>Bot</code> fields. We do this manually because it’s relatively simple and to avoid the <code>TemplateHaskell</code> requirement that comes along with Edward Kmett’s larger <a href="http://hackage.haskell.org/package/lens-3.10.0.1">Lens</a> library. Given a more complicated system, we might choose to use <a href="http://hackage.haskell.org/package/lens-3.10.0.1">Lens</a> to automatically generate these. However, this is a small program so the overhead isn’t necessary. Also, don’t worry too much about the declarations of the <code>Lens</code>es above: Just know that they allow us to do some cool stuff later on.</p>
+<p>With these <code>Lens</code>es defined and our <code>Bot</code> data type in place, we can move on to defining more of the game’s semantics.</p>
+<h4 id="more-types">More Types</h4>
+<p>We’ll need a data type to represent a bot’s actions during a single round, and a game state representing the global state of the game:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Event</span>    <span class="fu">=</span> (<span class="dt">Int</span>, <span class="dt">Bool</span>, <span class="dt">Bool</span>)
+<span class="kw">type</span> <span class="dt">BotState</span> <span class="fu">=</span> (<span class="dt">R.StdGen</span>, (<span class="dt">Bot</span>, <span class="dt">Bot</span>))</code></pre></div>
+<p>The <code>Event</code> type defines a round of a single Bot’s behavior in a 3-tuple – the first parameter corresponds to damage dealt, the second to whether or not the bot dodged, and the third to whether or not the bot blocked. We will process these events later.</p>
+<p>The <code>BotState</code> type boxes up a <code>StdGen</code> for us to use when generating random events, and a 2-tuple of <code>Bot</code>s – the player character’s bot and the enemy AI. This is all the global state we need in our game.</p>
+<p>We can make some new <code>Lens</code>es for these types, given that 2-tuples are easily indexed using <code>Lens</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">generator ::</span> <span class="dt">Lens'</span> <span class="dt">BotState</span> <span class="dt">R.StdGen</span>
+generator <span class="fu">=</span> _1
+
+<span class="ot">player ::</span> <span class="dt">Lens'</span> <span class="dt">BotState</span> <span class="dt">Bot</span>
+player <span class="fu">=</span> _2<span class="fu">.</span>_1
+
+<span class="ot">enemy ::</span> <span class="dt">Lens'</span> <span class="dt">BotState</span> <span class="dt">Bot</span>
+enemy <span class="fu">=</span> _2<span class="fu">.</span>_2</code></pre></div>
+<p>Here we create a <code>Lens</code> that references the <code>StdGen</code> of the <code>BotState</code>, using <code>_1</code>. We can also compose <code>Lens</code>es using <code>.</code> (from the <code>Prelude</code>!) and we use this functionality with the simple <code>Lens</code>es <code>_1</code> and <code>_2</code> to make <code>Lens</code>es referencing the player and enemy AI in a <code>BotState</code>.</p>
+<p>Well, that’s about all the type declaring we need to do. Now we can get on with piecing together the actual gameplay.</p>
+<h4 id="generating-events">Generating Events</h4>
+<p>Now comes the fun part: actually programming the game mechanics. Essentially what we’d like to do is the following:</p>
+<ol style="list-style-type: decimal">
+<li>Generate an event for the player and enemy at the same time.</li>
+<li>Process each event.</li>
+<li>If either bot is dead, end the game and print an ending message.</li>
+</ol>
+<p>Here we’ll focus on (1), generating events. Let’s take a look at some code:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">genEvent ::</span> <span class="dt">Bot</span> <span class="ot">-&gt;</span> <span class="dt">StateT</span> <span class="dt">R.StdGen</span> <span class="dt">IO</span> <span class="dt">Event</span>
+genEvent bot <span class="fu">=</span> <span class="kw">do</span>
+    [n, m, r] <span class="ot">&lt;-</span> replicateM <span class="dv">3</span> <span class="fu">$</span> state (R.randomR (<span class="dv">0</span>, <span class="dv">100</span>))
+    <span class="kw">let</span> dodge <span class="fu">=</span> n <span class="fu">&lt;</span> <span class="dv">100</span> <span class="fu">*</span> bot<span class="fu">^.</span>dex <span class="ot">`div`</span> (bot<span class="fu">^.</span>dex <span class="fu">+</span> <span class="dv">50</span>)
+        block <span class="fu">=</span> m <span class="fu">&lt;</span> <span class="dv">100</span> <span class="fu">*</span> bot<span class="fu">^.</span>con <span class="ot">`div`</span> (bot<span class="fu">^.</span>con <span class="fu">+</span> <span class="dv">30</span>)
+        dmg   <span class="fu">=</span> bot<span class="fu">^.</span>str <span class="fu">+</span> (bot<span class="fu">^.</span>str <span class="fu">*</span> r) <span class="ot">`div`</span> <span class="dv">30</span>
+    return (dmg, dodge, block)</code></pre></div>
+<p>In order to generate an event for a bot, we grab three numbers between 0 and 100:</p>
+<ul>
+<li>n, which helps determine if the bot dodges,</li>
+<li>m, which helps determine if the bot blocks,</li>
+<li>and r, which helps determine how much damage the bot does.</li>
+</ul>
+<p>We can use the <code>state</code> combinator here to lift the computation <code>(R.randomR (0, 100))</code> to a computation in the <code>StateT</code> monad. We then perform some arithmetic using the random numbers we grabbed along with the <code>dex</code>, <code>con</code>, and <code>str</code> stats from our <code>Bot</code>. We access these using the <code>^.</code> combinator from the <code>lens-family</code>, using the <code>Lens</code>es we defined above.</p>
+<p>Important note: We are producing the amount of damage a bot <em>deals</em> here. We will want to process events according to how much damage each bot <em>receives</em>, which we’ll handle in a minute.</p>
+<p>Now that we can generate single events, we need a way of mapping them to specific bots. We’ll define a new function, <code>genEventPair</code>, to generate <em>two</em> events at once, corresponding to the player and the enemy in the game.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">genEventPair ::</span> <span class="dt">StateT</span> <span class="dt">BotState</span> <span class="dt">IO</span> (<span class="dt">Event</span>, <span class="dt">Event</span>)
+genEventPair <span class="fu">=</span> <span class="kw">do</span>
+    p <span class="ot">&lt;-</span> use player
+    e <span class="ot">&lt;-</span> use enemy
+    zoom generator <span class="fu">$</span> liftM2 switchDmgs (genEvent p) (genEvent e)
+  <span class="kw">where</span>
+    switchDmgs (a, b, c) (d, e, f) <span class="fu">=</span> ( (d, b, c), (a, e, f) )</code></pre></div>
+<p>There are a couple of new things at play here. First, on <code>use</code>:</p>
+<p>Note the use of our <code>Lens</code>es <code>player</code> and <code>enemy</code>. To access the underlying state in a <code>StateT</code>, we typically call the function <code>lift</code>. Here instead we call the function <code>use</code> from <code>Lens.Family2.State</code>, which allows us to specify which <em>piece</em> of our <code>BotState</code> we want to get. We do just this in order to generate events for both the <code>player</code> and <code>enemy</code>, using the aforementioned <code>Lens</code>es.</p>
+<p>Next, if you were looking closely you might have noticed that <code>genEvent</code> isn’t operating in the same monad as <code>genEventPair</code>, yet we use <code>genEvent</code> inside of <code>genEventPair</code>! We are able do do this using the <code>zoom</code> combinator.</p>
+<p><code>zoom</code> lifts a stateful operation on one field to a stateful operation on the entire state. Here, we’re zooming into <code>generator</code> (a <code>Lens</code> on our <code>StdGen</code>) and lifting the (stateful) generation of events for both the player and enemy into a (stateful) generation of <em>two</em> events while preserving player and enemy states. The fact that we can <code>zoom</code> into <code>genEvent</code> helps out the declaration immensely. It removes a lot of plumbing that we would have had to deal with in order to have <code>genEvent</code> operate on an underlying state of type <code>BotState</code> and allows the type of the computation to be more explicit.</p>
+<p>Finally, Note the use of <code>switchDmgs</code> here: This was an ad hoc way to switch around damage dealt and damage sustained. <code>genEventPair</code> produces events harboring damage <em>taken</em>, which is what we need in order to process them in a nice way.</p>
+<h4 id="processing-events">Processing Events</h4>
+<p>Now that we’re able to generate events and keep track of our game state, the next thing we need to do is actually process these events and update game state. We introduce <code>resolveEvent</code> to take care of this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">resolveEvent ::</span> (<span class="dt">Monad</span> m) <span class="ot">=&gt;</span> (<span class="dt">Event</span>, <span class="dt">Event</span>) <span class="ot">-&gt;</span> <span class="dt">StateT</span> <span class="dt">BotState</span> m [(<span class="dt">Bot</span>, <span class="dt">Event</span>)]
+resolveEvent (p_evt, e_evt) <span class="fu">=</span> <span class="kw">do</span>
+    zoom player (resolve p_evt)
+    zoom enemy  (resolve e_evt)
+    p <span class="ot">&lt;-</span> use player
+    e <span class="ot">&lt;-</span> use enemy
+    return [(p, p_evt), (e, e_evt)]
+
+<span class="ot">resolve ::</span> (<span class="dt">Monad</span> m) <span class="ot">=&gt;</span> <span class="dt">Event</span> <span class="ot">-&gt;</span> <span class="dt">StateT</span> <span class="dt">Bot</span> m ()
+resolve (dmg, ddg, blk)
+    <span class="fu">|</span> ddg       <span class="fu">=</span> return ()
+    <span class="fu">|</span> blk       <span class="fu">=</span> hp <span class="fu">-=</span> dmg <span class="ot">`div`</span> <span class="dv">2</span>
+    <span class="fu">|</span> otherwise <span class="fu">=</span> hp <span class="fu">-=</span> dmg</code></pre></div>
+<p>First let’s look at the <code>resolve</code> function. Here we are taking an event and updating a <code>Bot</code>’s state based on that event. The implementation is straightforward, especially given that we have the <code>-=</code> <code>Lens</code> combinator at our disposal – this allows us to write imperative-looking code that does exactly what you would expect it to.</p>
+<p>In the <code>resolveEvent</code> function, you should see some similarities to the above section. We can again use <code>zoom</code> and <code>use</code> in order to lift computations and retrieve state just as before, but we’re updating the main game state now. We produce two 2-tuples containing modified bots and their attached event that was processed during each turn.</p>
+<p>At this point, the game logic is actually finished. We have ways to produce and deal with game events that modify game state, and provided that we can actually link these functions together (which we can, as we’ll see later), the game will actually run. All that we need to do now is handle IO and bot death. This is where <code>Pipes</code> comes in.</p>
+<h4 id="pipes-and-io">Pipes and IO</h4>
+<p>Let’s get the boring stuff out of the way first. I mentioned above that we have yet to deal with two major components of our game: IO and bot death. Let’s first define some simple functions to deal with these:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">dead ::</span> <span class="dt">Bot</span> <span class="ot">-&gt;</span> <span class="dt">Bool</span>
+dead <span class="fu">=</span> (<span class="fu">&lt;=</span> <span class="dv">0</span>) <span class="fu">.</span> view hp
+
+<span class="ot">printBot ::</span> <span class="dt">Bot</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> ()
+printBot bot <span class="fu">=</span> putStrLn <span class="fu">$</span> bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; has &quot;</span> <span class="fu">++</span> show (bot<span class="fu">^.</span>hp) <span class="fu">++</span> <span class="st">&quot; hp remaining.&quot;</span>
+
+<span class="ot">printEvent ::</span> <span class="dt">Bot</span> <span class="ot">-&gt;</span> <span class="dt">Event</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> ()
+printEvent bot (_, <span class="dt">True</span>, _) <span class="fu">=</span> putStrLn <span class="fu">$</span>
+  bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; dodges the attack and takes no damage!&quot;</span>
+printEvent bot (d, _, <span class="dt">True</span>) <span class="fu">=</span> putStrLn <span class="fu">$</span> 
+  bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; blocks and takes half (&quot;</span> <span class="fu">++</span> show (d <span class="ot">`div`</span> <span class="dv">2</span>) <span class="fu">++</span> <span class="st">&quot;) damage!&quot;</span>
+printEvent bot (d, _,    _) <span class="fu">=</span> putStrLn <span class="fu">$</span> 
+  bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; takes &quot;</span> <span class="fu">++</span> show d <span class="fu">++</span> <span class="st">&quot; damage.&quot;</span></code></pre></div>
+<p>Here we again make use of our <code>Lens</code>es (these are handy, huh?). We use the <code>view</code> function in order to get the health of our bot in <code>dead</code>, and check whether its hp is less than 0 in the usual fashion. <code>view</code> is just a prefix synonym for the infix <code>^.</code> that we’ve been using all this time. Speaking of which, we use the <code>^.</code> combinator heavily in both <code>printEvent</code> and <code>printBot</code> to handle the string-handling plumbing. Since these functions essentially tell you what they’re doing implicitly, I’ll omit an extensive explanation.</p>
+<p>Now that we have ways to print <code>Bot</code>s and <code>Event</code>s and check for bot death, the last thing we need to do is actually perform these things the context of our game. A <code>Consumer</code> from the <code>Pipes</code> library will handle this nicely for us:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">printGame ::</span> <span class="dt">Consumer</span> [(<span class="dt">Bot</span>, <span class="dt">Event</span>)] (<span class="dt">StateT</span> <span class="dt">BotState</span> <span class="dt">IO</span>) ()
+printGame <span class="fu">=</span> <span class="kw">do</span>
+    botEvents<span class="fu">@</span>[(b1, e1), (b2, e2)] <span class="ot">&lt;-</span> await
+    (lift <span class="fu">.</span> lift) <span class="fu">$</span> <span class="kw">do</span>
+        forM_ botEvents <span class="fu">$</span> \be<span class="fu">@</span>(bot, event) <span class="ot">-&gt;</span> <span class="kw">do</span>
+            uncurry printEvent be
+            printBot bot
+            threadDelay <span class="dv">500000</span>
+            when (dead bot) <span class="fu">$</span> putStrLn <span class="fu">$</span> bot<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; died!&quot;</span>
+        putStrLn <span class="fu">$</span> <span class="kw">case</span> (dead b1, dead b2) <span class="kw">of</span>
+            (<span class="dt">True</span> , <span class="dt">True</span> ) <span class="ot">-&gt;</span> <span class="st">&quot;It was a tie!&quot;</span>
+            (<span class="dt">True</span> , <span class="dt">False</span>) <span class="ot">-&gt;</span> b2<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; wins!&quot;</span>
+            (<span class="dt">False</span>, <span class="dt">True</span> ) <span class="ot">-&gt;</span> b1<span class="fu">^.</span>name <span class="fu">++</span> <span class="st">&quot; wins!&quot;</span>
+            _              <span class="ot">-&gt;</span> <span class="st">&quot;-----------------&quot;</span>
+    unless (any (dead <span class="fu">.</span> fst) botEvents) printGame</code></pre></div>
+<p>We <code>await</code> two <code>(Bot, Event)</code>s (from where, you might ask? We’ll see in a moment.) and essentially handle all of the plumbing here. For each pair of bots and events, we print the event, print the bot, then wait half a second with <code>threadDelay</code> (otherwise the game would run too quickly and we wouldn’t see it play out). With a <code>Consumer</code> like this, we need to loop until we’ve consumed all of the input we want, so we use the <code>when</code> and <code>unless</code> functions from <code>Control.Monad</code> as indicators of when to do so. If a bot dies, we stop – we also print out some information about who died and who won the game.</p>
+<h4 id="running-the-game">Running the Game</h4>
+<p>Okay, so I say that we have everything we need now, but you might ask…how do I run this? Let’s take a look at a program that pits two bots – a good guy and a bad guy – against one another, and we’ll dissect it.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">runGame ::</span> <span class="dt">IO</span> ()
+runGame <span class="fu">=</span> <span class="kw">do</span>
+    gen <span class="ot">&lt;-</span> R.getStdGen
+    <span class="kw">let</span> player <span class="fu">=</span> <span class="dt">Bot</span> <span class="st">&quot;The Good Guy&quot;</span> <span class="dv">19</span> <span class="dv">13</span> <span class="dv">12</span> <span class="dv">200</span>
+        enemy  <span class="fu">=</span> <span class="dt">Bot</span> <span class="st">&quot;The Bad Guy&quot;</span>  <span class="dv">14</span> <span class="dv">6</span>  <span class="dv">10</span> <span class="dv">200</span>
+        startState <span class="fu">=</span> (gen, (player, enemy))
+    flip evalStateT startState 
+      <span class="fu">$</span> runEffect 
+      <span class="fu">$</span> lift (genEventPair <span class="fu">&gt;&gt;=</span> resolveEvent) <span class="fu">&gt;~</span> printGame</code></pre></div>
+<p>In the first few lines, we simply set up an initial state for the game. The real “stuff” happens in the line starting with <code>flip evalStateT</code>. We’ll work through this at a type level from the inside-out. First, we perform <code>genEventPair &gt;&gt;= resolveEvent</code>, which effectively handles the logic we talked about earlier and produces a <code>StateT BotState IO [(Bot, Event)]</code>. From here, we <code>lift</code> the computation into an <code>Effect (StateT BotState IO) [(Bot, Event)]</code>, which we then repeatedly pipe into <code>printGame</code> with <code>&gt;~</code>. After all of this, we <code>runEffect</code> to extract the <code>StateT BotState IO [(Bot, Event)]</code> from the computation, and finally evaluate the function using <code>evalStateT</code>. Phew!</p>
+<p>In any case, we can now run our program and execute the game…</p>
+<div class="sourceCode"><pre class="sourceCode c"><code class="sourceCode c">*Main&gt; runGame
+The Good Guy takes <span class="dv">15</span> damage.
+The Good Guy has <span class="dv">285</span> hp remaining.
+The Bad Guy takes <span class="dv">29</span> damage.
+The Bad Guy has <span class="dv">171</span> hp remaining.
+-----------------
+The Good Guy dodges the attack and takes no damage!
+The Good Guy has <span class="dv">285</span> hp remaining.
+The Bad Guy takes <span class="dv">20</span> damage.
+The Bad Guy has <span class="dv">151</span> hp remaining.
+-----------------
+The Good Guy blocks and takes half (<span class="dv">24</span>) damage!
+The Good Guy has <span class="dv">261</span> hp remaining.
+The Bad Guy takes <span class="dv">34</span> damage.
+The Bad Guy has <span class="dv">117</span> hp remaining.
+-----------------
+The Good Guy takes <span class="dv">46</span> damage.
+The Good Guy has <span class="dv">215</span> hp remaining.
+The Bad Guy takes <span class="dv">19</span> damage.
+The Bad Guy has <span class="dv">98</span> hp remaining.
+-----------------
+The Good Guy takes <span class="dv">32</span> damage.
+The Good Guy has <span class="dv">183</span> hp remaining.
+The Bad Guy takes <span class="dv">37</span> damage.
+The Bad Guy has <span class="dv">61</span> hp remaining.
+-----------------
+The Good Guy dodges the attack and takes no damage!
+The Good Guy has <span class="dv">183</span> hp remaining.
+The Bad Guy takes <span class="dv">12</span> damage.
+The Bad Guy has <span class="dv">49</span> hp remaining.
+-----------------
+The Good Guy takes <span class="dv">24</span> damage.
+The Good Guy has <span class="dv">159</span> hp remaining.
+The Bad Guy takes <span class="dv">23</span> damage.
+The Bad Guy has <span class="dv">26</span> hp remaining.
+-----------------
+The Good Guy dodges the attack and takes no damage!
+The Good Guy has <span class="dv">159</span> hp remaining.
+The Bad Guy takes <span class="dv">36</span> damage.
+The Bad Guy has -<span class="dv">10</span> hp remaining.
+The Bad Guy died!
+The Good Guy wins!</code></pre></div>
+<p>…and behold, the good guy wins (this time)!</p>
+<p><a href="https://gist.github.com/5outh/8049361">View full source on GitHub</a>.</p>
+<p>- Ben</p>
+</div>
+
+<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+      </section>
+      <footer class="footer">
+        © 2016 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <script src="js/scale.fix.js"></script>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>

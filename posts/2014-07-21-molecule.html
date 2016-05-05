@@ -1,0 +1,382 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Abstract Nonsense</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css">
+  </head>
+  <body>
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="../contact.html">About</a></li>
+</ul>
+
+
+        <h1 id="blog_title">Abstract Nonsense</h1>
+      </header>
+      <section>
+        
+          <h3 class="post-title">An attempt at zipper-based type inference in Molecule</h3>
+        
+        <p>
+<div class="post_body">
+	<h3 id="prelude">Prelude</h3>
+<p>I recently designed a very small programming language, <a href="https://github.com/5outh/Molecule">Molecule</a>. Molecule is a slight extension of the <a href="http://en.wikipedia.org/wiki/Simply_typed_lambda_calculus">simply typed lambda calculus (STLC)</a> that supports type inference. It is mostly a contained experiment on how to implement type inference in an STLC-like language.</p>
+<p>In this blog post, I want to talk about my experience with Molecule and its static type checking and inference mechanism, which works for <em>most</em> valid programs. I do not know if this approach can be modified to work for <em>all</em> valid programs (and indeed this is a problem), but I think it’s worth talking about regardless.</p>
+<p>Molecule and its REPL, <code>mi</code>, can be downloaded <a href="https://github.com/5outh/Molecule">from GitHub</a>, if you’d like to play with it.</p>
+<h3 id="syntax">Syntax</h3>
+<p>Molecule’s syntax tries to emulate the mathematical notation used in the lambda calculus, without explicit type annotations (which aren’t even allowed syntactically). A valid program can be one of the following expressions (informally):</p>
+<ul>
+<li><code>Int</code> literals</li>
+<li><code>Boolean</code> literals (<code>t</code> and <code>f</code>)</li>
+<li>Addition (<code>1 + 2</code>)</li>
+<li>Boolean Or (<code>f | t</code>)</li>
+<li>Lambda abstractions (<code>\x. x + x</code>), and</li>
+<li>Function application (<code>(\x.x) 80</code>)</li>
+</ul>
+<p>Expressions can have type <code>Int</code>, <code>Bool</code>, or any function type between types, e.g. <code>Int -&gt; Bool</code>. Expressions are monomorphic, meaning they cannot take more than one value. For a quick example, the polymorphic identity function <code>\x.x</code> has no type in Molecule – only applied to another expression can it take on a type. <code>(\x.x) 10</code>, for example, has type <code>Int</code>.</p>
+<p>The type inference mechanism that I will be describing never produces the <em>wrong</em> type for a Molecule expression, but it fails to realize that some expressions can be typed at all. The following expression, for example:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">((\x<span class="fu">.</span>x) (\x<span class="fu">.</span>x)) f</code></pre></div>
+<p>should have type <code>Bool</code>; however, Molecule’s type checker cannot unify its type.</p>
+<h3 id="type-inference-in-molecule">Type Inference in Molecule</h3>
+<p>When designing a slightly more ambitious PL, I was writing a naïve type inferencer and hit the point where I was pattern matching on non-leaf expression constructors in order to determine the types of the leaves. At a basic level, there was an <code>Expr</code> data type akin to:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Expr</span> <span class="fu">=</span> 
+    <span class="dt">Var</span> <span class="dt">String</span>
+  <span class="fu">|</span> <span class="dt">PInt</span> <span class="dt">Int</span>
+  <span class="fu">|</span> <span class="dt">Expr</span> <span class="fu">:+:</span> <span class="dt">Expr</span>
+   <span class="co">-- ... and so on</span></code></pre></div>
+<p>And I was pattern matching against, for example <code>(Var &quot;x&quot; :+: a)</code> as well as <code>(a :+: Var &quot;x&quot;)</code> in order to determine that <code>x</code> was an <code>Int</code>. As you can imagine, this got tedious quickly. I wanted to be able to have some function <code>infer :: Expr -&gt; Type</code> such that <code>infer (Var x)</code> would spit out the type for <code>x</code> in the context of its expression. After narrowing down the information that I actually needed to typecheck a <code>Var</code>, I realized all that was needed in order to infer the type of an expression was information about where the <code>Var</code> came from one level higher in the AST. For example, in the expression <code>(Var &quot;x&quot; :+: a)</code>, just knowing that <code>Var &quot;x&quot;</code> came from a <code>:+:</code> expression is enough to determine that <code>x : Int</code>, and similarly for other types of expressions.</p>
+<p>Let’s dive into the actual definitions of Molecule’s data types in order to talk about how this works concretely in practice.</p>
+<p>Types are simple, as described above. <code>TLam</code> represents function types (<code>Int -&gt; Bool === TLam TInt TBool</code>).</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">MoleculeType</span> <span class="fu">=</span>
+    <span class="dt">TBool</span>
+  <span class="fu">|</span> <span class="dt">TInt</span>
+  <span class="fu">|</span> <span class="dt">TLam</span> <span class="dt">MoleculeType</span> <span class="dt">MoleculeType</span>
+    <span class="kw">deriving</span> <span class="dt">Eq</span></code></pre></div>
+<p>Values can be <code>Bool</code>s, <code>Int</code>s, or function values with an expression environment (mappings from variables in scope to expressions), the name of the argument it takes, and an expression body.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Name</span> <span class="fu">=</span> <span class="dt">String</span>
+<span class="kw">type</span> <span class="dt">Env</span> <span class="fu">=</span> <span class="dt">Map</span> <span class="dt">Name</span> <span class="dt">MoleculeValue</span>
+
+<span class="kw">data</span> <span class="dt">MoleculeValue</span> <span class="fu">=</span>
+    <span class="dt">VBool</span> <span class="dt">Bool</span>
+  <span class="fu">|</span> <span class="dt">VInt</span> <span class="dt">Int</span>
+  <span class="fu">|</span> <span class="dt">VLam</span> <span class="dt">Env</span> <span class="dt">Name</span> <span class="dt">MoleculeExpr</span></code></pre></div>
+<p>Expressions are represented as you might expect. <code>EAbs</code> represents a lambda abstraction, <code>EApp</code> function application, and <code>:+:</code> and <code>:|:</code> correspond to addition and boolean <code>or</code>, respectively.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">MoleculeExpr</span> <span class="fu">=</span>
+    <span class="dt">EVar</span> <span class="dt">Name</span>
+  <span class="fu">|</span> <span class="dt">ETrue</span> 
+  <span class="fu">|</span> <span class="dt">EFalse</span>
+  <span class="fu">|</span> <span class="dt">EInt</span> <span class="dt">Int</span>
+  <span class="fu">|</span> <span class="dt">EAbs</span> <span class="dt">Name</span> <span class="dt">MoleculeExpr</span>
+  <span class="fu">|</span> <span class="dt">EApp</span> <span class="dt">MoleculeExpr</span> <span class="dt">MoleculeExpr</span>
+  <span class="fu">|</span> <span class="dt">MoleculeExpr</span> <span class="fu">:+:</span> <span class="dt">MoleculeExpr</span>
+  <span class="fu">|</span> <span class="dt">MoleculeExpr</span> <span class="fu">:|:</span> <span class="dt">MoleculeExpr</span>
+    <span class="kw">deriving</span> <span class="dt">Eq</span> </code></pre></div>
+<p>Here’s the key data type we need in order to keep track of the expression we’re coming from when we hit <code>Var</code> values in the type inferencer. Each of these <code>Crumb</code>s tag the expression one level higher and carry along all information in it that isn’t already present in the expression currently being expected. This is one of the pieces of a <a href="http://learnyouahaskell.com/zippers">zipper</a> for the Molecule AST.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">MoleculeCrumb</span> <span class="fu">=</span>
+  <span class="fu">|</span> <span class="dt">CPlus</span> <span class="dt">MoleculeExpr</span>   <span class="co">-- Came from +</span>
+  <span class="fu">|</span> <span class="dt">COr</span> <span class="dt">MoleculeExpr</span>     <span class="co">-- Came from |</span>
+  <span class="fu">|</span> <span class="dt">CAbs</span> <span class="dt">Name</span>            <span class="co">-- Came from a lambda abstraction</span>
+  <span class="fu">|</span> <span class="dt">CApp1</span> <span class="dt">MoleculeExpr</span>   <span class="co">-- Came from first arg of application</span>
+  <span class="fu">|</span> <span class="dt">CApp2</span> <span class="dt">MoleculeExpr</span>   <span class="co">-- Came from second arg of application</span>
+    <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)</code></pre></div>
+<p>We use a basic monad transformer stack to represent the type of the type checker.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">TypeEnv</span>     <span class="fu">=</span> <span class="dt">M.Map</span> <span class="dt">Name</span> <span class="dt">MoleculeType</span>
+<span class="kw">type</span> <span class="dt">Scope</span>       <span class="fu">=</span> <span class="dt">S.Set</span> <span class="dt">Name</span>
+<span class="kw">type</span> <span class="dt">Typechecker</span> <span class="fu">=</span> <span class="dt">ExceptT</span> <span class="dt">MoleculeError</span> (<span class="dt">ReaderT</span> (<span class="dt">Maybe</span> <span class="dt">MoleculeCrumb</span>, <span class="dt">Scope</span>) (<span class="dt">StateT</span> <span class="dt">TypeEnv</span> <span class="dt">Identity</span>))</code></pre></div>
+<p><code>TypeEnv</code>s are maps from variable names to types, and a <code>Scope</code> is a list of variable names in scope. The typechecker has access to 3 basic (monadic) effects:</p>
+<ol style="list-style-type: decimal">
+<li>Error production, via <code>ExceptT MoleculeError</code></li>
+<li>Threading variable scope and a crumb through the computation, via <code>ReaderT (Maybe MoleculeCrumb, Scope)</code>, and</li>
+<li>Access to a mutable type environment, via <code>StateT TypeEnv Identity</code>.</li>
+</ol>
+<p>Note that we don’t need a “full” zipper here, since we only care about the <em>single</em> expression that the variable came from, not the entire path from the AST root. This is all we need to implement a relatively robust type inference/checking mechanism for Molecule. The <em>inference</em> part of type checking takes place in the following branch of the <code>check</code> function, which accepts an <code>EVar</code> (Note: this is modified for brevity; in practice, more specific type errors are thrown for failing expressions).</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">check ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Typechecker</span> <span class="dt">MoleculeType</span>
+check (<span class="dt">EVar</span> name) <span class="fu">=</span> <span class="kw">do</span>
+  <span class="kw">let</span> addBinding name typ <span class="fu">=</span> modify (M.insert name typ) <span class="fu">&gt;&gt;</span> return typ
+      typeError <span class="fu">=</span> throwError <span class="fu">.</span> <span class="dt">TypeError</span>
+  (crumb, scope) <span class="ot">&lt;-</span> ask
+  <span class="kw">if</span> S.notMember name scope
+  <span class="kw">then</span> typeError <span class="fu">$</span> <span class="st">&quot;variable not in scope: &quot;</span> <span class="fu">++</span> name
+  <span class="kw">else</span> <span class="kw">do</span>
+    env <span class="ot">&lt;-</span> get
+    <span class="kw">case</span> M.lookup name env <span class="kw">of</span>
+      <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="kw">case</span> crumb <span class="kw">of</span>
+        <span class="dt">Just</span> x <span class="ot">-&gt;</span> <span class="kw">case</span> x <span class="kw">of</span>
+          <span class="dt">CPlus</span> _ <span class="ot">-&gt;</span> addBinding name <span class="dt">TInt</span>
+          <span class="dt">COr</span>   _ <span class="ot">-&gt;</span> addBinding name <span class="dt">TBool</span>
+          <span class="dt">CAbs</span> nm <span class="ot">-&gt;</span> <span class="kw">case</span> M.lookup nm env <span class="kw">of</span>
+            <span class="dt">Just</span> t  <span class="ot">-&gt;</span> addBinding name t
+          <span class="dt">CApp2</span> e <span class="ot">-&gt;</span> <span class="kw">do</span>
+            t <span class="ot">&lt;-</span> check e
+            <span class="kw">case</span> t <span class="kw">of</span>
+              <span class="dt">TLam</span> v _ <span class="ot">-&gt;</span> addBinding name v
+      <span class="dt">Just</span> t <span class="ot">-&gt;</span> <span class="kw">case</span> crumb <span class="kw">of</span>
+        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> return t
+        <span class="dt">Just</span> cb <span class="ot">-&gt;</span> <span class="kw">case</span> cb <span class="kw">of</span>
+          <span class="dt">CPlus</span> _ <span class="fu">|</span> t <span class="fu">==</span> <span class="dt">TInt</span>  <span class="ot">-&gt;</span> return <span class="dt">TInt</span>
+          <span class="dt">COr</span>   _ <span class="fu">|</span> t <span class="fu">==</span> <span class="dt">TBool</span> <span class="ot">-&gt;</span> return <span class="dt">TBool</span>
+          <span class="dt">CAbs</span> _ <span class="ot">-&gt;</span> return t
+          <span class="dt">CApp1</span> _ <span class="ot">-&gt;</span> <span class="kw">case</span> t <span class="kw">of</span>
+            <span class="dt">TLam</span> _ _ <span class="ot">-&gt;</span> return t
+          <span class="dt">CApp2</span> e <span class="ot">-&gt;</span> <span class="kw">do</span>
+            t' <span class="ot">&lt;-</span> check e
+            <span class="kw">case</span> t' <span class="kw">of</span>
+              <span class="dt">TLam</span> typ _ <span class="fu">|</span> typ <span class="fu">==</span> t <span class="ot">-&gt;</span> return t</code></pre></div>
+<p>That’s a bit of a mouthful, but can be broken up into sections. First off, if we hit this block of code, we’ve hit a variable in a program and need to unify its type. We first get the crumb and scope that has been accumulating throughout traversal of the AST. We then check if the variable in question is in scope; if not, we throw a <code>TypeError</code>. We next get the type environment <code>env</code>. If the variable in question is not bound in the type environment, we bind it to the appropriate type and return it using <code>addBinding</code>. If we came from a lambda abstraction, the (sub)expression must be <code>\x.x</code>, so we return the type of <code>x</code> in the environment, if it already exists. If we came from the second value of an application (i.e. the value being <em>applied</em> to a function), we check the type of the function it is being applied to – if it isn’t a lambda abstraction, the typechecker fails.</p>
+<p>It’s worth noting that this last <code>CApp2</code> rule is exactly <em>why</em> the expression I noted earlier – <code>((\x.x) (\y.y)) 10</code> – fails. The subexpression <code>((\x.x) (\y.y))</code> doesn’t typecheck to a <code>TLam</code>; it fails to typecheck because <code>\y.y</code> isn’t unifiable. But I digress – the typechecker works reasonably well and I think the schema is simple enough to be interesting, even if not exactly practical/suitable for real-world usage in its current state.</p>
+<p>If there exists a binding in the type environment for the variable in question, we just make sure that type matches what we expect and return it.</p>
+<p>The rest of the <code>check</code> function consists of functions in the same vein as this one (the <code>:+:</code> branch, again omitting error-handling noise):</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">withCrumb ::</span> <span class="dt">Typechecker</span> a <span class="ot">-&gt;</span> <span class="dt">MoleculeCrumb</span> <span class="ot">-&gt;</span> <span class="dt">Typechecker</span> a
+withCrumb action crumb <span class="fu">=</span> local (_1 <span class="fu">.~</span> <span class="dt">Just</span> crumb) action
+
+check (e1 <span class="fu">:+:</span> e2) <span class="fu">=</span> <span class="kw">do</span>
+  e1' <span class="ot">&lt;-</span> check e1 <span class="ot">`withCrumb`</span> <span class="dt">CPlus</span> e2
+  e2' <span class="ot">&lt;-</span> check e2 <span class="ot">`withCrumb`</span> <span class="dt">CPlus</span> e1
+  <span class="kw">case</span> (e1', e2') <span class="kw">of</span>
+    (<span class="dt">TInt</span>, <span class="dt">TInt</span>) <span class="ot">-&gt;</span> return <span class="dt">TInt</span></code></pre></div>
+<p>where we set the <code>Crumb</code> in the expression with a helper function <code>withCrumb</code> (which makes use of the <code>local</code> and a common <code>lens</code>/operation) and propagate typechecking through the rest of the AST.</p>
+<p>We can run the typechecker using the final function <code>typecheck</code> (which looks complex but just runs a typechecking operation with initially empty environments and no crumb):</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">typecheck ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">MoleculeError</span> <span class="dt">MoleculeType</span>
+typecheck <span class="fu">=</span> runTypecheck <span class="dt">Nothing</span> S.empty M.empty
+  <span class="kw">where</span> runTypecheck crumb scope te expr <span class="fu">=</span> 
+    runIdentity <span class="fu">$</span> evalStateT (runReaderT (runExceptT (check expr)) (crumb, scope)) te</code></pre></div>
+<p>Now we have a static typechecker for Molecule expressions, which means, most importantly, that we can run expressions safely <em>without the types</em>, which in turn removes a lot of ambiguity from the actual evaluator and allows for faster evaluation since expressions need not be typechecked at runtime.</p>
+<h3 id="evaluating-molecule-expressions">Evaluating Molecule Expressions</h3>
+<p>Let’s get right to it – the code for evaluation in Molecule looks like this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Evaluator</span> <span class="fu">=</span> <span class="dt">ExceptT</span> <span class="dt">MoleculeError</span> (<span class="dt">Reader</span> (<span class="dt">M.Map</span> <span class="dt">Name</span> <span class="dt">MoleculeValue</span>))
+
+<span class="ot">eval ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Evaluator</span> <span class="dt">MoleculeValue</span>
+eval e <span class="fu">=</span> <span class="kw">do</span>
+  env <span class="ot">&lt;-</span> ask
+  <span class="kw">case</span> e <span class="kw">of</span>
+    <span class="dt">ETrue</span>   <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VBool</span> <span class="dt">True</span>
+    <span class="dt">EFalse</span>  <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VBool</span> <span class="dt">False</span>
+    <span class="dt">EInt</span> x  <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VInt</span> x
+    <span class="dt">EAbs</span> name e1 <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VLam</span> env name e1
+    <span class="dt">EVar</span> nm <span class="ot">-&gt;</span> return <span class="fu">$</span> fromJust (M.lookup nm env) 
+    e1 <span class="fu">:+:</span> e2 <span class="ot">-&gt;</span> <span class="kw">do</span>
+      [a, b] <span class="ot">&lt;-</span> mapM eval [e1, e2]
+      <span class="kw">case</span> (a, b) <span class="kw">of</span>
+        (<span class="dt">VInt</span> a', <span class="dt">VInt</span> b') <span class="ot">-&gt;</span> return <span class="fu">.</span> <span class="dt">VInt</span> <span class="fu">$</span> a' <span class="fu">+</span> b'
+    <span class="dt">EApp</span> e1 e2 <span class="ot">-&gt;</span> <span class="kw">do</span>
+      [e1', e2'] <span class="fu">=</span> mapM eval [e1, e2]
+      <span class="kw">case</span> e1' <span class="kw">of</span>
+        <span class="dt">VLam</span> env' name body <span class="ot">-&gt;</span> local (const <span class="fu">$</span> M.insert name e2' env') <span class="fu">$</span> eval body</code></pre></div>
+<p>I’ve removed the <code>:|:</code> rule for brevity (hint: it looks just like <code>:+:</code>). Most of this is pretty straightforward because we don’t have to deal with typechecking at runtime. The most complex evaluation rule is the one for <code>EApp</code>, which applies <code>e2</code> to <code>e1</code>. This rule says to evaluate <code>e1</code> and <code>e2</code>, then take the resulting lambda abstraction, bind the argument name to <code>e2</code>’s evaluated expression, then evaluate the lambda abstraction’s body with the modified environment.</p>
+<p>Again, we can run the evaluator with a simple wrapper function <code>evaluate</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">evaluate ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">MoleculeError</span> <span class="dt">MoleculeValue</span>
+evaluate <span class="fu">=</span> runEval M.empty
+  <span class="kw">where</span> runEval env e <span class="fu">=</span> runReader (runExceptT (eval e)) env</code></pre></div>
+<p>…and that’s basically all there is to Molecule! The <code>mi</code> REPL is built with <a href="https://hackage.haskell.org/package/haskeline">haskeline</a> and supports type checking via <code>:t</code> (a la <code>ghci</code>) and evaluation by simply typing (no pun intended) expressions.</p>
+<p>I’ve still got a long way to go in the programming languages world, but I’m proud of Molecule even if its type inference is a little flawed. My next project will either have a type system closer to <a href="http://en.wikipedia.org/wiki/Hindley–Milner_type_system">Hindley Milner</a> (so I can type infer with something closer to <a href="http://en.wikipedia.org/wiki/Hindley–Milner_type_system#Algorithm_W">Algorithm W</a>), or just make type annotations explicit (for a different set of challenges).</p>
+<p>Again, Molecule’s full source code is <a href="https://github.com/5outh/Molecule">available on GitHub</a>.</p>
+<p>Ben</p>
+</div>
+</p>
+        
+<div class="post_body">
+	<h3 id="prelude">Prelude</h3>
+<p>I recently designed a very small programming language, <a href="https://github.com/5outh/Molecule">Molecule</a>. Molecule is a slight extension of the <a href="http://en.wikipedia.org/wiki/Simply_typed_lambda_calculus">simply typed lambda calculus (STLC)</a> that supports type inference. It is mostly a contained experiment on how to implement type inference in an STLC-like language.</p>
+<p>In this blog post, I want to talk about my experience with Molecule and its static type checking and inference mechanism, which works for <em>most</em> valid programs. I do not know if this approach can be modified to work for <em>all</em> valid programs (and indeed this is a problem), but I think it’s worth talking about regardless.</p>
+<p>Molecule and its REPL, <code>mi</code>, can be downloaded <a href="https://github.com/5outh/Molecule">from GitHub</a>, if you’d like to play with it.</p>
+<h3 id="syntax">Syntax</h3>
+<p>Molecule’s syntax tries to emulate the mathematical notation used in the lambda calculus, without explicit type annotations (which aren’t even allowed syntactically). A valid program can be one of the following expressions (informally):</p>
+<ul>
+<li><code>Int</code> literals</li>
+<li><code>Boolean</code> literals (<code>t</code> and <code>f</code>)</li>
+<li>Addition (<code>1 + 2</code>)</li>
+<li>Boolean Or (<code>f | t</code>)</li>
+<li>Lambda abstractions (<code>\x. x + x</code>), and</li>
+<li>Function application (<code>(\x.x) 80</code>)</li>
+</ul>
+<p>Expressions can have type <code>Int</code>, <code>Bool</code>, or any function type between types, e.g. <code>Int -&gt; Bool</code>. Expressions are monomorphic, meaning they cannot take more than one value. For a quick example, the polymorphic identity function <code>\x.x</code> has no type in Molecule – only applied to another expression can it take on a type. <code>(\x.x) 10</code>, for example, has type <code>Int</code>.</p>
+<p>The type inference mechanism that I will be describing never produces the <em>wrong</em> type for a Molecule expression, but it fails to realize that some expressions can be typed at all. The following expression, for example:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">((\x<span class="fu">.</span>x) (\x<span class="fu">.</span>x)) f</code></pre></div>
+<p>should have type <code>Bool</code>; however, Molecule’s type checker cannot unify its type.</p>
+<h3 id="type-inference-in-molecule">Type Inference in Molecule</h3>
+<p>When designing a slightly more ambitious PL, I was writing a naïve type inferencer and hit the point where I was pattern matching on non-leaf expression constructors in order to determine the types of the leaves. At a basic level, there was an <code>Expr</code> data type akin to:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Expr</span> <span class="fu">=</span> 
+    <span class="dt">Var</span> <span class="dt">String</span>
+  <span class="fu">|</span> <span class="dt">PInt</span> <span class="dt">Int</span>
+  <span class="fu">|</span> <span class="dt">Expr</span> <span class="fu">:+:</span> <span class="dt">Expr</span>
+   <span class="co">-- ... and so on</span></code></pre></div>
+<p>And I was pattern matching against, for example <code>(Var &quot;x&quot; :+: a)</code> as well as <code>(a :+: Var &quot;x&quot;)</code> in order to determine that <code>x</code> was an <code>Int</code>. As you can imagine, this got tedious quickly. I wanted to be able to have some function <code>infer :: Expr -&gt; Type</code> such that <code>infer (Var x)</code> would spit out the type for <code>x</code> in the context of its expression. After narrowing down the information that I actually needed to typecheck a <code>Var</code>, I realized all that was needed in order to infer the type of an expression was information about where the <code>Var</code> came from one level higher in the AST. For example, in the expression <code>(Var &quot;x&quot; :+: a)</code>, just knowing that <code>Var &quot;x&quot;</code> came from a <code>:+:</code> expression is enough to determine that <code>x : Int</code>, and similarly for other types of expressions.</p>
+<p>Let’s dive into the actual definitions of Molecule’s data types in order to talk about how this works concretely in practice.</p>
+<p>Types are simple, as described above. <code>TLam</code> represents function types (<code>Int -&gt; Bool === TLam TInt TBool</code>).</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">MoleculeType</span> <span class="fu">=</span>
+    <span class="dt">TBool</span>
+  <span class="fu">|</span> <span class="dt">TInt</span>
+  <span class="fu">|</span> <span class="dt">TLam</span> <span class="dt">MoleculeType</span> <span class="dt">MoleculeType</span>
+    <span class="kw">deriving</span> <span class="dt">Eq</span></code></pre></div>
+<p>Values can be <code>Bool</code>s, <code>Int</code>s, or function values with an expression environment (mappings from variables in scope to expressions), the name of the argument it takes, and an expression body.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Name</span> <span class="fu">=</span> <span class="dt">String</span>
+<span class="kw">type</span> <span class="dt">Env</span> <span class="fu">=</span> <span class="dt">Map</span> <span class="dt">Name</span> <span class="dt">MoleculeValue</span>
+
+<span class="kw">data</span> <span class="dt">MoleculeValue</span> <span class="fu">=</span>
+    <span class="dt">VBool</span> <span class="dt">Bool</span>
+  <span class="fu">|</span> <span class="dt">VInt</span> <span class="dt">Int</span>
+  <span class="fu">|</span> <span class="dt">VLam</span> <span class="dt">Env</span> <span class="dt">Name</span> <span class="dt">MoleculeExpr</span></code></pre></div>
+<p>Expressions are represented as you might expect. <code>EAbs</code> represents a lambda abstraction, <code>EApp</code> function application, and <code>:+:</code> and <code>:|:</code> correspond to addition and boolean <code>or</code>, respectively.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">MoleculeExpr</span> <span class="fu">=</span>
+    <span class="dt">EVar</span> <span class="dt">Name</span>
+  <span class="fu">|</span> <span class="dt">ETrue</span> 
+  <span class="fu">|</span> <span class="dt">EFalse</span>
+  <span class="fu">|</span> <span class="dt">EInt</span> <span class="dt">Int</span>
+  <span class="fu">|</span> <span class="dt">EAbs</span> <span class="dt">Name</span> <span class="dt">MoleculeExpr</span>
+  <span class="fu">|</span> <span class="dt">EApp</span> <span class="dt">MoleculeExpr</span> <span class="dt">MoleculeExpr</span>
+  <span class="fu">|</span> <span class="dt">MoleculeExpr</span> <span class="fu">:+:</span> <span class="dt">MoleculeExpr</span>
+  <span class="fu">|</span> <span class="dt">MoleculeExpr</span> <span class="fu">:|:</span> <span class="dt">MoleculeExpr</span>
+    <span class="kw">deriving</span> <span class="dt">Eq</span> </code></pre></div>
+<p>Here’s the key data type we need in order to keep track of the expression we’re coming from when we hit <code>Var</code> values in the type inferencer. Each of these <code>Crumb</code>s tag the expression one level higher and carry along all information in it that isn’t already present in the expression currently being expected. This is one of the pieces of a <a href="http://learnyouahaskell.com/zippers">zipper</a> for the Molecule AST.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">MoleculeCrumb</span> <span class="fu">=</span>
+  <span class="fu">|</span> <span class="dt">CPlus</span> <span class="dt">MoleculeExpr</span>   <span class="co">-- Came from +</span>
+  <span class="fu">|</span> <span class="dt">COr</span> <span class="dt">MoleculeExpr</span>     <span class="co">-- Came from |</span>
+  <span class="fu">|</span> <span class="dt">CAbs</span> <span class="dt">Name</span>            <span class="co">-- Came from a lambda abstraction</span>
+  <span class="fu">|</span> <span class="dt">CApp1</span> <span class="dt">MoleculeExpr</span>   <span class="co">-- Came from first arg of application</span>
+  <span class="fu">|</span> <span class="dt">CApp2</span> <span class="dt">MoleculeExpr</span>   <span class="co">-- Came from second arg of application</span>
+    <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)</code></pre></div>
+<p>We use a basic monad transformer stack to represent the type of the type checker.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">TypeEnv</span>     <span class="fu">=</span> <span class="dt">M.Map</span> <span class="dt">Name</span> <span class="dt">MoleculeType</span>
+<span class="kw">type</span> <span class="dt">Scope</span>       <span class="fu">=</span> <span class="dt">S.Set</span> <span class="dt">Name</span>
+<span class="kw">type</span> <span class="dt">Typechecker</span> <span class="fu">=</span> <span class="dt">ExceptT</span> <span class="dt">MoleculeError</span> (<span class="dt">ReaderT</span> (<span class="dt">Maybe</span> <span class="dt">MoleculeCrumb</span>, <span class="dt">Scope</span>) (<span class="dt">StateT</span> <span class="dt">TypeEnv</span> <span class="dt">Identity</span>))</code></pre></div>
+<p><code>TypeEnv</code>s are maps from variable names to types, and a <code>Scope</code> is a list of variable names in scope. The typechecker has access to 3 basic (monadic) effects:</p>
+<ol style="list-style-type: decimal">
+<li>Error production, via <code>ExceptT MoleculeError</code></li>
+<li>Threading variable scope and a crumb through the computation, via <code>ReaderT (Maybe MoleculeCrumb, Scope)</code>, and</li>
+<li>Access to a mutable type environment, via <code>StateT TypeEnv Identity</code>.</li>
+</ol>
+<p>Note that we don’t need a “full” zipper here, since we only care about the <em>single</em> expression that the variable came from, not the entire path from the AST root. This is all we need to implement a relatively robust type inference/checking mechanism for Molecule. The <em>inference</em> part of type checking takes place in the following branch of the <code>check</code> function, which accepts an <code>EVar</code> (Note: this is modified for brevity; in practice, more specific type errors are thrown for failing expressions).</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">check ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Typechecker</span> <span class="dt">MoleculeType</span>
+check (<span class="dt">EVar</span> name) <span class="fu">=</span> <span class="kw">do</span>
+  <span class="kw">let</span> addBinding name typ <span class="fu">=</span> modify (M.insert name typ) <span class="fu">&gt;&gt;</span> return typ
+      typeError <span class="fu">=</span> throwError <span class="fu">.</span> <span class="dt">TypeError</span>
+  (crumb, scope) <span class="ot">&lt;-</span> ask
+  <span class="kw">if</span> S.notMember name scope
+  <span class="kw">then</span> typeError <span class="fu">$</span> <span class="st">&quot;variable not in scope: &quot;</span> <span class="fu">++</span> name
+  <span class="kw">else</span> <span class="kw">do</span>
+    env <span class="ot">&lt;-</span> get
+    <span class="kw">case</span> M.lookup name env <span class="kw">of</span>
+      <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="kw">case</span> crumb <span class="kw">of</span>
+        <span class="dt">Just</span> x <span class="ot">-&gt;</span> <span class="kw">case</span> x <span class="kw">of</span>
+          <span class="dt">CPlus</span> _ <span class="ot">-&gt;</span> addBinding name <span class="dt">TInt</span>
+          <span class="dt">COr</span>   _ <span class="ot">-&gt;</span> addBinding name <span class="dt">TBool</span>
+          <span class="dt">CAbs</span> nm <span class="ot">-&gt;</span> <span class="kw">case</span> M.lookup nm env <span class="kw">of</span>
+            <span class="dt">Just</span> t  <span class="ot">-&gt;</span> addBinding name t
+          <span class="dt">CApp2</span> e <span class="ot">-&gt;</span> <span class="kw">do</span>
+            t <span class="ot">&lt;-</span> check e
+            <span class="kw">case</span> t <span class="kw">of</span>
+              <span class="dt">TLam</span> v _ <span class="ot">-&gt;</span> addBinding name v
+      <span class="dt">Just</span> t <span class="ot">-&gt;</span> <span class="kw">case</span> crumb <span class="kw">of</span>
+        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> return t
+        <span class="dt">Just</span> cb <span class="ot">-&gt;</span> <span class="kw">case</span> cb <span class="kw">of</span>
+          <span class="dt">CPlus</span> _ <span class="fu">|</span> t <span class="fu">==</span> <span class="dt">TInt</span>  <span class="ot">-&gt;</span> return <span class="dt">TInt</span>
+          <span class="dt">COr</span>   _ <span class="fu">|</span> t <span class="fu">==</span> <span class="dt">TBool</span> <span class="ot">-&gt;</span> return <span class="dt">TBool</span>
+          <span class="dt">CAbs</span> _ <span class="ot">-&gt;</span> return t
+          <span class="dt">CApp1</span> _ <span class="ot">-&gt;</span> <span class="kw">case</span> t <span class="kw">of</span>
+            <span class="dt">TLam</span> _ _ <span class="ot">-&gt;</span> return t
+          <span class="dt">CApp2</span> e <span class="ot">-&gt;</span> <span class="kw">do</span>
+            t' <span class="ot">&lt;-</span> check e
+            <span class="kw">case</span> t' <span class="kw">of</span>
+              <span class="dt">TLam</span> typ _ <span class="fu">|</span> typ <span class="fu">==</span> t <span class="ot">-&gt;</span> return t</code></pre></div>
+<p>That’s a bit of a mouthful, but can be broken up into sections. First off, if we hit this block of code, we’ve hit a variable in a program and need to unify its type. We first get the crumb and scope that has been accumulating throughout traversal of the AST. We then check if the variable in question is in scope; if not, we throw a <code>TypeError</code>. We next get the type environment <code>env</code>. If the variable in question is not bound in the type environment, we bind it to the appropriate type and return it using <code>addBinding</code>. If we came from a lambda abstraction, the (sub)expression must be <code>\x.x</code>, so we return the type of <code>x</code> in the environment, if it already exists. If we came from the second value of an application (i.e. the value being <em>applied</em> to a function), we check the type of the function it is being applied to – if it isn’t a lambda abstraction, the typechecker fails.</p>
+<p>It’s worth noting that this last <code>CApp2</code> rule is exactly <em>why</em> the expression I noted earlier – <code>((\x.x) (\y.y)) 10</code> – fails. The subexpression <code>((\x.x) (\y.y))</code> doesn’t typecheck to a <code>TLam</code>; it fails to typecheck because <code>\y.y</code> isn’t unifiable. But I digress – the typechecker works reasonably well and I think the schema is simple enough to be interesting, even if not exactly practical/suitable for real-world usage in its current state.</p>
+<p>If there exists a binding in the type environment for the variable in question, we just make sure that type matches what we expect and return it.</p>
+<p>The rest of the <code>check</code> function consists of functions in the same vein as this one (the <code>:+:</code> branch, again omitting error-handling noise):</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">withCrumb ::</span> <span class="dt">Typechecker</span> a <span class="ot">-&gt;</span> <span class="dt">MoleculeCrumb</span> <span class="ot">-&gt;</span> <span class="dt">Typechecker</span> a
+withCrumb action crumb <span class="fu">=</span> local (_1 <span class="fu">.~</span> <span class="dt">Just</span> crumb) action
+
+check (e1 <span class="fu">:+:</span> e2) <span class="fu">=</span> <span class="kw">do</span>
+  e1' <span class="ot">&lt;-</span> check e1 <span class="ot">`withCrumb`</span> <span class="dt">CPlus</span> e2
+  e2' <span class="ot">&lt;-</span> check e2 <span class="ot">`withCrumb`</span> <span class="dt">CPlus</span> e1
+  <span class="kw">case</span> (e1', e2') <span class="kw">of</span>
+    (<span class="dt">TInt</span>, <span class="dt">TInt</span>) <span class="ot">-&gt;</span> return <span class="dt">TInt</span></code></pre></div>
+<p>where we set the <code>Crumb</code> in the expression with a helper function <code>withCrumb</code> (which makes use of the <code>local</code> and a common <code>lens</code>/operation) and propagate typechecking through the rest of the AST.</p>
+<p>We can run the typechecker using the final function <code>typecheck</code> (which looks complex but just runs a typechecking operation with initially empty environments and no crumb):</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">typecheck ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">MoleculeError</span> <span class="dt">MoleculeType</span>
+typecheck <span class="fu">=</span> runTypecheck <span class="dt">Nothing</span> S.empty M.empty
+  <span class="kw">where</span> runTypecheck crumb scope te expr <span class="fu">=</span> 
+    runIdentity <span class="fu">$</span> evalStateT (runReaderT (runExceptT (check expr)) (crumb, scope)) te</code></pre></div>
+<p>Now we have a static typechecker for Molecule expressions, which means, most importantly, that we can run expressions safely <em>without the types</em>, which in turn removes a lot of ambiguity from the actual evaluator and allows for faster evaluation since expressions need not be typechecked at runtime.</p>
+<h3 id="evaluating-molecule-expressions">Evaluating Molecule Expressions</h3>
+<p>Let’s get right to it – the code for evaluation in Molecule looks like this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Evaluator</span> <span class="fu">=</span> <span class="dt">ExceptT</span> <span class="dt">MoleculeError</span> (<span class="dt">Reader</span> (<span class="dt">M.Map</span> <span class="dt">Name</span> <span class="dt">MoleculeValue</span>))
+
+<span class="ot">eval ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Evaluator</span> <span class="dt">MoleculeValue</span>
+eval e <span class="fu">=</span> <span class="kw">do</span>
+  env <span class="ot">&lt;-</span> ask
+  <span class="kw">case</span> e <span class="kw">of</span>
+    <span class="dt">ETrue</span>   <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VBool</span> <span class="dt">True</span>
+    <span class="dt">EFalse</span>  <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VBool</span> <span class="dt">False</span>
+    <span class="dt">EInt</span> x  <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VInt</span> x
+    <span class="dt">EAbs</span> name e1 <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VLam</span> env name e1
+    <span class="dt">EVar</span> nm <span class="ot">-&gt;</span> return <span class="fu">$</span> fromJust (M.lookup nm env) 
+    e1 <span class="fu">:+:</span> e2 <span class="ot">-&gt;</span> <span class="kw">do</span>
+      [a, b] <span class="ot">&lt;-</span> mapM eval [e1, e2]
+      <span class="kw">case</span> (a, b) <span class="kw">of</span>
+        (<span class="dt">VInt</span> a', <span class="dt">VInt</span> b') <span class="ot">-&gt;</span> return <span class="fu">.</span> <span class="dt">VInt</span> <span class="fu">$</span> a' <span class="fu">+</span> b'
+    <span class="dt">EApp</span> e1 e2 <span class="ot">-&gt;</span> <span class="kw">do</span>
+      [e1', e2'] <span class="fu">=</span> mapM eval [e1, e2]
+      <span class="kw">case</span> e1' <span class="kw">of</span>
+        <span class="dt">VLam</span> env' name body <span class="ot">-&gt;</span> local (const <span class="fu">$</span> M.insert name e2' env') <span class="fu">$</span> eval body</code></pre></div>
+<p>I’ve removed the <code>:|:</code> rule for brevity (hint: it looks just like <code>:+:</code>). Most of this is pretty straightforward because we don’t have to deal with typechecking at runtime. The most complex evaluation rule is the one for <code>EApp</code>, which applies <code>e2</code> to <code>e1</code>. This rule says to evaluate <code>e1</code> and <code>e2</code>, then take the resulting lambda abstraction, bind the argument name to <code>e2</code>’s evaluated expression, then evaluate the lambda abstraction’s body with the modified environment.</p>
+<p>Again, we can run the evaluator with a simple wrapper function <code>evaluate</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">evaluate ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">MoleculeError</span> <span class="dt">MoleculeValue</span>
+evaluate <span class="fu">=</span> runEval M.empty
+  <span class="kw">where</span> runEval env e <span class="fu">=</span> runReader (runExceptT (eval e)) env</code></pre></div>
+<p>…and that’s basically all there is to Molecule! The <code>mi</code> REPL is built with <a href="https://hackage.haskell.org/package/haskeline">haskeline</a> and supports type checking via <code>:t</code> (a la <code>ghci</code>) and evaluation by simply typing (no pun intended) expressions.</p>
+<p>I’ve still got a long way to go in the programming languages world, but I’m proud of Molecule even if its type inference is a little flawed. My next project will either have a type system closer to <a href="http://en.wikipedia.org/wiki/Hindley–Milner_type_system">Hindley Milner</a> (so I can type infer with something closer to <a href="http://en.wikipedia.org/wiki/Hindley–Milner_type_system#Algorithm_W">Algorithm W</a>), or just make type annotations explicit (for a different set of challenges).</p>
+<p>Again, Molecule’s full source code is <a href="https://github.com/5outh/Molecule">available on GitHub</a>.</p>
+<p>Ben</p>
+</div>
+
+<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+      </section>
+      <footer class="footer">
+        © 2016 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <script src="js/scale.fix.js"></script>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>

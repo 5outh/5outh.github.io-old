@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Abstract Nonsense</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css">
+  </head>
+  <body>
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="../contact.html">About</a></li>
+</ul>
+
+
+        <h1 id="blog_title">Abstract Nonsense</h1>
+      </header>
+      <section>
+        
+          <h3 class="post-title">99 Haskell Problems #13: Run-length Encoding</h3>
+        
+        <p>
+<div class="post_body">
+	<p>I’ve been working on The Ninety-Nine Haskell Problems lately, and I’ve come across a particular one that seems to be practical, and was a lot of fun to implement!</p>
+<p>The 99 Problems start out with a lot of list-based exercises, and eventually you’re asked to build up to a point where you can implement a function that performs Run-length encoding on a String. Basically what this means is, if we have a string, say “aabbcccd”, we’d group together the adjacent, identical characters, count them, and then output the characters along with their counts in a new list.</p>
+<p>Thus, the previous example <code>&quot;aabbcccd&quot;</code> would output something like this:</p>
+<pre><code>$ a2b2c3d</code></pre>
+<p>A couple of the 99 Problems ask you to implement this indirectly, meaning, actually group the identical characters into sub-lists and count the length of those lists. This is fairly trivial, making use of Haskell’s built-in function group, which takes a list and separates it in exactly the manner we would need in order to get sub-lists of adjacent identical values.</p>
+<p>The real fun came in Problem 13, where it asks for a direct implementation of the run-length encoding algorithm, meaning, we’re no longer allowed to split up the groups in the way that we were before. Additionally, the problem asks that we use a data wrapper on each ending value so we are able to discern Single values (example in above: <code>d</code>) vs Multiple values (ex: <code>a2</code>).</p>
+<p>Here’s what I came up with:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Count</span> <span class="fu">=</span> <span class="dt">Multiple</span> <span class="dt">Int</span> <span class="dt">Char</span> 
+           <span class="fu">|</span> <span class="dt">Single</span> <span class="dt">Char</span> 
+            <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Show</span>)
+			
+<span class="ot">encodeDirect ::</span> [<span class="dt">Char</span>] <span class="ot">-&gt;</span> [<span class="dt">Count</span>]
+encodeDirect <span class="fu">=</span> map toCount <span class="fu">.</span> foldr encode []
+  <span class="kw">where</span> toCount (x, y) <span class="fu">=</span> <span class="kw">case</span> x <span class="kw">of</span>
+                          <span class="dv">1</span> <span class="ot">-&gt;</span> <span class="dt">Single</span> y
+                          _ <span class="ot">-&gt;</span> <span class="dt">Multiple</span> x y
+        encode x [] <span class="fu">=</span> [(<span class="dv">1</span>, x)]
+        encode x (y<span class="fu">@</span>(a, b)<span class="fu">:</span>ys)
+          <span class="fu">|</span> b <span class="fu">==</span> x <span class="fu">=</span> (a<span class="fu">+</span><span class="dv">1</span>, b)<span class="fu">:</span>ys
+          <span class="fu">|</span> otherwise <span class="fu">=</span> (<span class="dv">1</span>, x)<span class="fu">:</span>y<span class="fu">:</span>ys</code></pre></div>
+<p>Let’s take a look at this.</p>
+<p>So, first I defined a new data type called <code>Count</code> that can be either a <code>Single</code> that contains a character, or a <code>Multiple</code> that contains a character and it’s count (as an <code>Int</code>)</p>
+<p>What <code>encodeDirect</code> does is actually parses a list of <code>Char</code>s (which, in Haskell, can be represented as a <code>String</code>, like <code>&quot;aabbcccd&quot;</code>) into a list that looks something like this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">[<span class="dt">Multiple</span> <span class="dv">2</span> a, <span class="dt">Multiple</span> <span class="dv">2</span> b, <span class="dt">Multiple</span> <span class="dv">3</span> c, <span class="dt">Single</span> d]</code></pre></div>
+<p>The procedure is as follows:</p>
+<p>First, we use encode every character in our input set by using a <code>foldr</code> and an <code>encode</code> function in order to get a list that contains 2-tuples with our character as the second value, and its count as the first. <code>(   [(2, 'a'), (2, 'b') ... ]   )</code></p>
+<p>The encode function might look a little cryptic, but broken down, it makes sense. First, if we have an empty resultant list of <code>Count</code>s, we need to put the first character we encounter in the resultant list. Once we have a resultant list (no matter how small), we are able to encode the other values by following some logic:</p>
+<ol style="list-style-type: decimal">
+<li><p>If the first character value in the resultant list matches what we are currently trying encode, we simply need to step up the count on that entry.</p></li>
+<li><p>Otherwise, we need to add the new character to the front of the list with a count of 1.</p></li>
+</ol>
+<p>When the <code>foldr</code> is complete, we have a nice list that looks just like how I described previously.</p>
+<p>Now, to get everything wrapped up into a <code>Count</code> declaration, we simply <code>map</code> the <code>toCount</code> function over the list we just generated. The <code>toCount</code> function takes one of our 2-tuple values and creates a <code>Single</code> value out of it if its count is equivalent to 1, otherwise it packs it into a <code>Multiple</code> value.</p>
+<p>Once this is mapped, we have our resultant list!</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="fu">$</span> encodeDirect <span class="st">&quot;aabbcccd&quot;</span> <span class="fu">=</span> [<span class="dt">Multiple</span> <span class="dv">2</span> a, <span class="dt">Multiple</span> <span class="dv">2</span> b, <span class="dt">Multiple</span> <span class="dv">3</span> c, <span class="dt">Single</span> d] </code></pre></div>
+<p>PS:I picked up a bit of new syntax from a video I watched last night, located here: <a href="http://www.youtube.com/watch?v=mtvoOIsN-GU">Sokoban Live Coding</a>. I learned a lot from it. If you’re interested in Haskell, check it out.</p>
+<p>Until next time!</p>
+<p>5outh</p>
+</div>
+</p>
+        
+<div class="post_body">
+	<p>I’ve been working on The Ninety-Nine Haskell Problems lately, and I’ve come across a particular one that seems to be practical, and was a lot of fun to implement!</p>
+<p>The 99 Problems start out with a lot of list-based exercises, and eventually you’re asked to build up to a point where you can implement a function that performs Run-length encoding on a String. Basically what this means is, if we have a string, say “aabbcccd”, we’d group together the adjacent, identical characters, count them, and then output the characters along with their counts in a new list.</p>
+<p>Thus, the previous example <code>&quot;aabbcccd&quot;</code> would output something like this:</p>
+<pre><code>$ a2b2c3d</code></pre>
+<p>A couple of the 99 Problems ask you to implement this indirectly, meaning, actually group the identical characters into sub-lists and count the length of those lists. This is fairly trivial, making use of Haskell’s built-in function group, which takes a list and separates it in exactly the manner we would need in order to get sub-lists of adjacent identical values.</p>
+<p>The real fun came in Problem 13, where it asks for a direct implementation of the run-length encoding algorithm, meaning, we’re no longer allowed to split up the groups in the way that we were before. Additionally, the problem asks that we use a data wrapper on each ending value so we are able to discern Single values (example in above: <code>d</code>) vs Multiple values (ex: <code>a2</code>).</p>
+<p>Here’s what I came up with:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Count</span> <span class="fu">=</span> <span class="dt">Multiple</span> <span class="dt">Int</span> <span class="dt">Char</span> 
+           <span class="fu">|</span> <span class="dt">Single</span> <span class="dt">Char</span> 
+            <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Show</span>)
+			
+<span class="ot">encodeDirect ::</span> [<span class="dt">Char</span>] <span class="ot">-&gt;</span> [<span class="dt">Count</span>]
+encodeDirect <span class="fu">=</span> map toCount <span class="fu">.</span> foldr encode []
+  <span class="kw">where</span> toCount (x, y) <span class="fu">=</span> <span class="kw">case</span> x <span class="kw">of</span>
+                          <span class="dv">1</span> <span class="ot">-&gt;</span> <span class="dt">Single</span> y
+                          _ <span class="ot">-&gt;</span> <span class="dt">Multiple</span> x y
+        encode x [] <span class="fu">=</span> [(<span class="dv">1</span>, x)]
+        encode x (y<span class="fu">@</span>(a, b)<span class="fu">:</span>ys)
+          <span class="fu">|</span> b <span class="fu">==</span> x <span class="fu">=</span> (a<span class="fu">+</span><span class="dv">1</span>, b)<span class="fu">:</span>ys
+          <span class="fu">|</span> otherwise <span class="fu">=</span> (<span class="dv">1</span>, x)<span class="fu">:</span>y<span class="fu">:</span>ys</code></pre></div>
+<p>Let’s take a look at this.</p>
+<p>So, first I defined a new data type called <code>Count</code> that can be either a <code>Single</code> that contains a character, or a <code>Multiple</code> that contains a character and it’s count (as an <code>Int</code>)</p>
+<p>What <code>encodeDirect</code> does is actually parses a list of <code>Char</code>s (which, in Haskell, can be represented as a <code>String</code>, like <code>&quot;aabbcccd&quot;</code>) into a list that looks something like this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">[<span class="dt">Multiple</span> <span class="dv">2</span> a, <span class="dt">Multiple</span> <span class="dv">2</span> b, <span class="dt">Multiple</span> <span class="dv">3</span> c, <span class="dt">Single</span> d]</code></pre></div>
+<p>The procedure is as follows:</p>
+<p>First, we use encode every character in our input set by using a <code>foldr</code> and an <code>encode</code> function in order to get a list that contains 2-tuples with our character as the second value, and its count as the first. <code>(   [(2, 'a'), (2, 'b') ... ]   )</code></p>
+<p>The encode function might look a little cryptic, but broken down, it makes sense. First, if we have an empty resultant list of <code>Count</code>s, we need to put the first character we encounter in the resultant list. Once we have a resultant list (no matter how small), we are able to encode the other values by following some logic:</p>
+<ol style="list-style-type: decimal">
+<li><p>If the first character value in the resultant list matches what we are currently trying encode, we simply need to step up the count on that entry.</p></li>
+<li><p>Otherwise, we need to add the new character to the front of the list with a count of 1.</p></li>
+</ol>
+<p>When the <code>foldr</code> is complete, we have a nice list that looks just like how I described previously.</p>
+<p>Now, to get everything wrapped up into a <code>Count</code> declaration, we simply <code>map</code> the <code>toCount</code> function over the list we just generated. The <code>toCount</code> function takes one of our 2-tuple values and creates a <code>Single</code> value out of it if its count is equivalent to 1, otherwise it packs it into a <code>Multiple</code> value.</p>
+<p>Once this is mapped, we have our resultant list!</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="fu">$</span> encodeDirect <span class="st">&quot;aabbcccd&quot;</span> <span class="fu">=</span> [<span class="dt">Multiple</span> <span class="dv">2</span> a, <span class="dt">Multiple</span> <span class="dv">2</span> b, <span class="dt">Multiple</span> <span class="dv">3</span> c, <span class="dt">Single</span> d] </code></pre></div>
+<p>PS:I picked up a bit of new syntax from a video I watched last night, located here: <a href="http://www.youtube.com/watch?v=mtvoOIsN-GU">Sokoban Live Coding</a>. I learned a lot from it. If you’re interested in Haskell, check it out.</p>
+<p>Until next time!</p>
+<p>5outh</p>
+</div>
+
+<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+      </section>
+      <footer class="footer">
+        © 2016 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <script src="js/scale.fix.js"></script>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>
