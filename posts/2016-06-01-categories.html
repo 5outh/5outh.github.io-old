@@ -1,0 +1,167 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Abstract Nonsense</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css">
+  </head>
+  <body>
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="../contact.html">About</a></li>
+</ul>
+
+
+        <h1 id="blog_title">Abstract Nonsense</h1>
+      </header>
+      <section>
+        
+          <h3 class="post-title">Categories in Theory and in Haskell</h3>
+        
+        <p>
+<div class="post_body">
+	<h2 id="overview">Overview</h2>
+<p>This is the first post in a series that I hope to expand over time regarding notions in category theory and how they manifest in the haskell programming language.</p>
+<p>Category theory is extremely general; its language is useful in recognizing structure and unifying mathematical concepts that don’t seem related at first glance. It’s a wonderful tool for gaining intuition about wildly different things in one fell swoop, which makes it a lot of fun to explore.</p>
+<p>On the other hand, haskell is an increasingly-widely-used, purely functional programming language with some obvious roots in category theory. A lot of the bizarre-sounding words haskellers use on a daily basis are derived from category theory (or other branches of mathematics that category theory generalizes). However, mapping from category theory to Haskell is sometimes nontrivial, and it can be hard to see the connection.</p>
+<p>I think that learning haskell should be a tool for understanding category theory and vice versa. This post, and possibly other future posts, will hopefully shed some light on the explicit translations between category theory language and haskell. This is not necessarily intended to be an introduction to category theory or haskell, and I don’t want to be too pedantic about definitions. however, I hope to incite an intuitive understanding about the basics of category theory and its translation to haskell.</p>
+<h2 id="the-category-intuitively">The category (intuitively)</h2>
+<p>A category is a type of mathematical object. For the uninitiated, one of the simplest examples of a mathematical object is the set; a collection of “things” that doesn’t contain duplicates. Examples are:</p>
+<ul>
+<li>The set of natural numbers <span class="math inline">{0..∞}</span></li>
+<li>The set of all humans living in Europe</li>
+<li>The set of all board games designed in the 1980s</li>
+</ul>
+<p>Sets have a very general structure, so many traditional mathematical objects add structure <em>on top of</em> sets in order to find more interesting insights.</p>
+<p>A category* is one of these objects. Intuitively, a category is a structure containing a bunch of “things” along with a way to move between those things.</p>
+<p><small> * Technically, <em>small</em> category. </small></p>
+<h2 id="the-category-in-theory">The category (in theory)</h2>
+<p>The (semi)formal* definition of a category is as follows:</p>
+<p>A category C consists of two things:</p>
+<ul>
+<li>A collection <span class="math inline"><em>C</em><sub>0</sub></span> of <em>objects</em>.</li>
+<li>A collection <span class="math inline"><em>C</em><sub>1</sub></span> of <em>morphisms</em>, with a <em>source</em> and <em>target</em> in <span class="math inline"><em>C</em><sub>0</sub></span>. We’ll consider an element of this set to look like <code>f : a -&gt; b</code>, where <code>a</code> is called the <em>source</em> of the morphism, and <code>b</code> is called its <em>target</em>.</li>
+<li>A special morphism in <span class="math inline"><em>i</em><em>d</em> : <em>C</em><sub>0</sub> → <em>C</em><sub>1</sub></span>, which assigns to each object <span class="math inline"><em>x</em> ∈ <em>C</em><sub>0</sub></span> a morphism <span class="math inline"><em>i</em><em>d</em><sub><em>x</em></sub></span> following the unit laws listed below.</li>
+<li>A composition operator <span class="math inline">∘</span>, which assigns, to any pair of morphisms <code>f : a   -&gt; b</code> and <code>g : b -&gt; c</code>, a composite morphism <span class="math inline"><em>g</em> ∘ <em>f</em></span> <code>: a -&gt; c</code> (Note that the source of <code>g</code> is the target of <code>f</code>).</li>
+</ul>
+<p>The following are also necessarily true of a category:</p>
+<ul>
+<li>Composition is associative: <span class="math inline">(<em>h</em> ∘ <em>g</em>)∘<em>f</em> = <em>h</em> ∘ (<em>g</em> ∘ <em>f</em>)</span> for <code>f :   a -&gt; b, g : b -&gt; c, h : c -&gt; d</code> in <span class="math inline"><em>C</em><sub>0</sub></span>.</li>
+<li>Composition satisfies the left and right unit laws: <span class="math inline"><em>i</em><em>d</em><sub><em>y</em></sub> ∘ <em>f</em> = <em>f</em> = <em>f</em> ∘ <em>i</em><em>d</em><sub><em>x</em></sub></span> for all morphisms <span class="math inline"><em>s</em></span> in <span class="math inline"><em>C</em><sub>0</sub></span>.</li>
+</ul>
+<p>Intuitively, <span class="math inline"><em>i</em><em>d</em></span> maps each object back to itself. However, when the structure of a category’s morphisms doesn’t look like a pure function, this definition is not exact. Neither the structure of objects, nor the structure of morphisms, is static across all categories. Hence we cannot say exactly what <span class="math inline"><em>i</em><em>d</em></span> or <span class="math inline">∘</span> <em>does</em>; we can only say how they should behave when they appear in a mathematical expression using a certain category.</p>
+<p><small> * Slightly handwavy, but formal enough to get the point across for our purposes! For two <em>full</em> definitions, see <a href="https://ncatlab.org/nlab/show/category#definitions">nlab’s page on categories</a>. </small></p>
+<p>Here’s an example:</p>
+<p><strong>Set</strong> is the category consisting of Sets as objects and functions between those sets as morphisms. Two objects in this category are the set of Natural numbers <span class="math inline">ℕ</span> and the set of Boolean values <span class="math inline"><em>B</em><em>o</em><em>o</em><em>l</em> = {<em>T</em><em>r</em><em>u</em><em>e</em>, <em>F</em><em>a</em><em>l</em><em>s</em><em>e</em>}</span>. The function <span class="math inline"><em>o</em><em>d</em><em>d</em> : ℕ → <em>B</em><em>o</em><em>o</em><em>l</em></span> which takes each natural number to its truth value of whether it is odd or not a morphism in this category.</p>
+<p>Some other examples of categories are:</p>
+<ul>
+<li>The <strong>free category</strong> generated by a directed graph, with nodes as objects and arrows between nodes as morphisms.</li>
+<li><strong>Hask</strong>, the Category of Haskell types and functions, which we will discuss next.</li>
+<li><strong>Grp</strong>, the category with groups as objects and group homomorphisms as arrows.*</li>
+</ul>
+<p><small> * It’s hard to find examples that aren’t deeply entrenched in mathematics; sorry! </small></p>
+<h2 id="hask">Hask</h2>
+<p>Before we talk about encoding categories in Haskell, I’d like to briefly talk about Haskell’s very own category, <strong>Hask</strong>.</p>
+<p><strong>Hask</strong> is the category in which:</p>
+<ul>
+<li>Members of Haskell’s types are objects</li>
+<li>Regular Haskell functions (<code>a -&gt; b</code>) are morphisms.</li>
+</ul>
+<p><code>id :: a -&gt; a</code> is the <span class="math inline"><em>i</em><em>d</em></span> morphism, and regular function composition with <code>(.) :: (b -&gt; c) -&gt; (a -&gt; b) -&gt; (a -&gt; c)</code> is morphism composition in <strong>Hask</strong>.</p>
+<p><strong>Hask</strong> is a legitimate category, but we have to be specific about what <code>undefined</code> means. More on that <a href="https://wiki.haskell.org/Hask">on haskell wiki</a>. Note that <strong>Hask</strong> is a category whether or not we’re speaking about it internally or externally; mentions of <strong>Hask</strong> are not required to appear in the context of haskell, which is interesting!</p>
+<h2 id="the-category-in-haskell">The category (in haskell)</h2>
+<p>In haskell, we typically use typeclasses to encode common functionality between various structures, which is exactly what we will do to encode category-theoretical categories. Here is the typeclass definition for <code>Category</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">class</span> <span class="dt">Category</span> cat <span class="kw">where</span>
+  id <span class="fu">:</span> cat a a
+  (<span class="fu">.</span>) <span class="fu">:</span> cat b c <span class="ot">-&gt;</span> cat a b <span class="ot">-&gt;</span> cat a c </code></pre></div>
+<p>We’ll talk more about this in a minute. First, let’s look at the most straight-forward example of a <code>Category</code>, the instance for <code>(-&gt;)</code> (Turn on the <code>InstanceSigs</code> GHC extension to get this to compile):</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Category</span> (<span class="ot">-&gt;</span>) <span class="kw">where</span>
+<span class="ot">  id ::</span> a <span class="ot">-&gt;</span> a <span class="co">-- or (-&gt;) a a</span>
+  id x <span class="fu">=</span> x
+
+<span class="ot">  (.) ::</span> (b <span class="ot">-&gt;</span> c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> c)
+      <span class="co">-- or ((-&gt;) b c) -&gt; ((-&gt;) a b) -&gt; ((-&gt;) a c)</span>
+  (f <span class="fu">.</span> g) x <span class="fu">=</span> f (g x) </code></pre></div>
+<p>This instance represents <strong>Hask</strong>. Another common <code>Category</code> instance we commonly encounter as haskell programmers is the one for <code>Kleisli</code> arrows, which we see quite a bit when writing monadic code:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">newtype</span> <span class="dt">Kleisli</span> m a b <span class="fu">=</span> <span class="dt">Kleisli</span> {<span class="ot"> runKleisli ::</span> a <span class="ot">-&gt;</span> m b }
+
+<span class="kw">instance</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> <span class="dt">Category</span> (<span class="dt">Kleisli</span> m) <span class="kw">where</span>
+<span class="ot">  id ::</span> <span class="dt">Kleisli</span> m a a 
+  id <span class="fu">=</span> <span class="dt">Kleisli</span> return
+
+<span class="ot">  (.) ::</span> <span class="dt">Kleisli</span> m b c <span class="ot">-&gt;</span> <span class="dt">Kleisli</span> m a b <span class="ot">-&gt;</span> <span class="dt">Kleisli</span> m a c
+  (<span class="dt">Kleisli</span> f) <span class="fu">.</span> (<span class="dt">Kleisli</span> g) <span class="fu">=</span> <span class="dt">Kleisli</span> <span class="fu">$</span> \x <span class="ot">-&gt;</span> (f <span class="fu">&lt;=&lt;</span> g) x</code></pre></div>
+<p>Recall that:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">return<span class="ot"> ::</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> m a 
+<span class="co">-- The Kleisli fish operator &lt;=&lt; comes from Control.Monad.</span>
+<span class="ot">(&lt;=&lt;) ::</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> (b <span class="ot">-&gt;</span> m c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> m b) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> m c)</code></pre></div>
+<p>and it might be easier to see where that instance comes from. We won’t prove that these two instances follow the category laws here; the important thing for our purposes is that these instances follow the pattern. Proving that this instance follows the category laws through equational reasoning is a nice exercise, though.</p>
+<p>At this point, it may feel like there are some holes. In the mathematical interpretation, we construct categories by explicitly providing both objects of a category and its morphisms. It’s not totally obvious where those come up when representing categories in haskell. So, where’s the connection?</p>
+<h2 id="the-connection">The connection</h2>
+<p>Objects of a <code>Category</code> in haskell are types. The typeclass variable <code>cat</code> describes the type (see aside below) of morphisms in our category. Specifically, the sources and targets of our morphisms are hidden in the type declaration for the morphisms we’re declaring a category instance for. In <code>(-&gt;)</code>, the source and target can be any haskell data type. For a morphism in <code>Kleisli</code>, however, the <em>source</em> can be any haskell data type, but the <em>target</em> of our morphisms must be something with the structure <code>m a</code> for some <code>m</code>. This lets us describe in some sense the structure of a morphism in the category, though it does not give us all laws for free (Try encoding <strong>Grp</strong>, for instance).</p>
+<p>In typeclass instances for <code>Category</code>, we develop the laws stating that we must have identity and composition operators that respect the structure of our objects and categories. Haskell’s typechecker helps us confirm that some of the category laws hold by construction. If we can’t find something of type <code>cat a a</code>, we don’t have an <span class="math inline"><em>i</em><em>d</em></span>. If we can’t find a typechecking instance for <code>(.)</code>, we can’t ensure that sources and targets match up when composing morphisms. This may not always give us law-abiding instances for free, but we can certainly be guided by the typechecker.</p>
+<hr />
+<h3 id="aside-types">Aside: types</h3>
+<p>Types are themselves a kind of mathematical structure in the same vein as sets. The main difference is that types are <em>constrained</em> to a certain subset of values; with (mathematical) sets, anything goes. Haskell’s type definitions define a subset of <em>values</em> that are valid inhabitants (members) of a type. The type itself can be viewed in some sense as the set of all of its inhabitants. When we say a value <span class="math inline"><em>v</em></span> has type <span class="math inline"><em>τ</em></span>, with this definition we are saying that <span class="math inline"><em>v</em> ∈ <em>τ</em></span>.</p>
+<hr />
+<p>(These are not the only categories we can encode in Haskell; they are just two common examples.)</p>
+<h2 id="takeaway">Takeaway</h2>
+<p>It is possible to encode a category in haskell, but it doesn’t look exactly the same as laying out its definition on paper in a mathematical setting. In particular:</p>
+<ul>
+<li>A category <span class="math inline"><em>C</em></span> is defined in haskell by providing the type (structure) of morphisms in <span class="math inline"><em>C</em></span>, instead of explicitly stating its objects and morphisms.</li>
+<li>Objects of all categories defined in haskell are types expressible by the haskell type system. In the whole world of mathematics, objects can be much broader.</li>
+<li>Typechecking implementations of <span class="math inline"><em>i</em><em>d</em></span> and <span class="math inline">∘</span> must be provided for all <code>Category</code> instances, which guides us towards law-abiding implementations.</li>
+</ul>
+</div>
+</p>
+        <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+
+      </section>
+      <footer class="footer">
+        © 2016 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <script src="js/scale.fix.js"></script>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+  </body>
+</html>
