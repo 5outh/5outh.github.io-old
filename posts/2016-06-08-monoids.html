@@ -37,7 +37,7 @@
 	<h2 id="overview">Overview</h2>
 <p>This is the second in a series of posts about category theory and its relationship with Haskell. We’ll be exploring monoids in this post!</p>
 <h2 id="the-monoid-intuitively">The monoid (intuitively)</h2>
-<p>A monoid is a mathematical object, just like a category, which we explored in the last post. TODO link to last post. Intuitively, a monoid is a structure which encodes the ability to concatenate two things, and a zero-like element which, when used in concatenation, does not affect the other element. Let’s look at a typical mathematical formulation of a monoid:</p>
+<p>A monoid is a mathematical object, just like a category, <a href="http://localhost:8000/posts/2016-06-01-categories.html">which we explored in the last post</a>. Intuitively, a monoid is a structure which encodes the ability to concatenate two things, and a zero-like element which, when used in concatenation, does not affect the other element. Let’s look at a typical mathematical formulation of a monoid:</p>
 <p>A <strong>monoid</strong> is a set <span class="math inline"><em>M</em></span> equipped with a binary operation <span class="math inline">× : <em>m</em> → <em>m</em> → <em>m</em></span> and a special element <span class="math inline">1 ∈ <em>M</em></span> such that <span class="math inline">1</span> and <span class="math inline">×</span> satisfy the following laws:</p>
 <ul>
 <li>Associativity: <span class="math inline">(<em>x</em> × <em>y</em>)×<em>z</em> = <em>x</em> × (<em>y</em> × <em>z</em>)</span></li>
