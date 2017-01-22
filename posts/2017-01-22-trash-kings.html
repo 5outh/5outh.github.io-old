@@ -32,26 +32,22 @@
       </header>
       <section>
         
-          <h3 class="post-title">Fhck, a brainfuck interpreter written in Haskell</h3>
+          <h3 class="post-title">Announcing Trash Kings</h3>
         
         <p>
 <div class="post_body">
-	<p>If you haven’t heard of <a href="http://en.wikipedia.org/wiki/Brainfuck">brainf*ck</a>, you should check it out, because it’s probably the coolest programming language of them all! Also, probably one of the simplest… That’s why I decided to write an interpreter for it.</p>
-<p>This is the product of about 3 days of work, give or take, but the sessions were long and I put a lot into it. If you’re a Haskeller reading this, please feel free to critique it (I’m sure it could be improved in many places)! If you’re not, please feel free to check it out anyway! I encourage everyone to play around with brainfuck a little bit because it’s actually a lot of fun. If you’re not familiar with the language, a quick look through brainfuck’s <a href="http://en.wikipedia.org/wiki/Brainfuck">Wikipedia</a> page should help you to understand what’s going on in brainfuck (it’s not too complex).</p>
-<p>With the interpreter, you can write a file, say <code>thisisbf.b</code>, containing the classic “Hello, world!” brainfuck program directly from the wikipedia page:</p>
-<pre class="brainfuck"><code>++++++++++[&gt;+++++++&gt;++++++++++&gt;+++&gt;+&lt;&lt;&lt;&lt;-]
-&gt;++.&gt;+.+++++++..+++.&gt;++.&lt;&lt;+++++++++++++++.
-&gt;.+++.------.--------.&gt;+.&gt;.</code></pre>
-<p>and pass it to the interpreter: on Windows:</p>
+	<p>I’m working on a tile laying game! It’s called <em>Trash Kings</em>. Here’s the premise:</p>
 <blockquote>
-<p>$ build.exe thisisbrainfuck.b</p>
+<p><em>It’s drop-off day at the dump. As a scavenging rodent, you must do what ever it takes to earn your claim over the wealth of new garbage. Will you gather the best waste and earn the title of Trash King?</em></p>
 </blockquote>
-<p>or Linux (or presumably Mac OSX, though I haven’t tried):</p>
-<blockquote>
-<p>$ build/linux/fhck hisisbrainfuck.b</p>
-</blockquote>
-<p>…and it should print <code>Hello, world!</code> to your console.</p>
-<p>Download link/source is located here: <a href="https://github.com/5outh/fhck">fhck</a> Enjoy!</p>
+<p>Here’s what the prototype looks like:</p>
+<p><img width="80%" src="../images/trash_kings_prototype.jpg" /></p>
+<p>In <em>Trash Kings</em>, players place tiles on an expanding board in order to create and claim mounds. Players will gain points based on mounds they claim throughout the game. The player with the most points at the end wins!</p>
+<p>The game draws a lot of inspiration from <a href="https://boardgamegeek.com/boardgame/822/carcassonne">Carcassonne</a>, but there are a few mechanics that make it feel unique. In Trash Kings, you have the option of swapping tiles around on the game board in order to create areas to control.</p>
+<p>Certain configurations of tiles prevent other players from swapping out important tiles on the game board, and using these is the key to beating out your opponents. Also, the way the game is scored during and at the end of the game differs, necessitating the use of multiple strategies during the course of the game.</p>
+<p>You can download the rulebook <a href="../pdfs/trash_kings_rule_book.pdf">here</a>, and a print &amp; play version of the game <a href="../pdfs/game_components.pdf">here</a>.</p>
+<p><em>Trash Kings</em> is very much a work in progress. Every time I have played it (with my wife, or alone as multiple players) I tweak something about it. I’m open to any and all feedback, which can be sent to <a href="mailto:bkovach13@gmail.com">bkovach13@gmail.com</a> or left as a comment on this blog post.</p>
+<p>Enjoy!</p>
 </div>
 </p>
         <div id="disqus_thread"></div>
