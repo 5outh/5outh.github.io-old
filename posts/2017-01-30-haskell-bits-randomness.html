@@ -44,7 +44,7 @@
 </ul>
 <p>That’s all for a single number.</p>
 <p>Most programming languages will hide these details from you unless you need them. Most of the time, you can just call <code>random()</code> and get a random number (typically between 0 and 1), using a seed value generated from some system variable that is always changing (current time in very small units is common).</p>
-<p>The simplest way to replicate this behavior in Haskell is by using the <code>System.Random</code> module, part of the <code>random</code> package.</p>
+<p>The simplest way to replicate this behavior in Haskell is by using the <code>System.Random</code> module, part of the <a href="https://hackage.haskell.org/package/random-1.1/docs/System-Random.html"><code>random</code></a> package.</p>
 <p>We can use <code>randomIO</code> and <code>randomRIO</code> to pull from a global RNG:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">System.Random</span>
 
@@ -91,7 +91,7 @@ main <span class="fu">=</span> <span class="kw">do</span>
   gen <span class="ot">&lt;-</span> newStdGen
   print (evalState twoDice gen)</code></pre></div>
 <p>Now we can run more complex programs that employ random numbers. Note that <code>newStdGen</code> can be replaced with <code>mkStdGen :: Int -&gt; StdGen</code> if you want to provide an integral seed instead of using the global <code>StdGen</code>.</p>
-<p>You can avoid some of this boilerplate and get a few more benefits by bringing in the <code>MonadRandom</code> package. Here’s some code that accomplishes the same goal using <code>MonadRandom</code>:</p>
+<p>You can avoid some of this boilerplate and get a few more benefits by bringing in the <a href="https://hackage.haskell.org/package/MonadRandom-0.5"><code>MonadRandom</code></a> package. Here’s some code that accomplishes the same goal using <code>MonadRandom</code>:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">System.Random</span>
 <span class="kw">import </span><span class="dt">Control.Monad.Random</span>
 
@@ -130,7 +130,7 @@ main <span class="fu">=</span> <span class="kw">do</span>
   print (evalRand danceDanceRevolutionScroll gen)</code></pre></div>
 <p><code>fromList</code> lets you specify weights for your random elements. <code>L</code> and <code>R</code> will probably show up a lot more than the other two directions when this is run.</p>
 <p><code>MonadRandom</code> supplies some other conveniences as well, but it’s not crazy stuffed with functionality. It’s a nice package that contains the minimal amount of code to be useful but not overengineered.</p>
-<p>That said, sometimes you need more. First off, what about different distributions? The normal distribution is a pretty common necessity. <code>random-fu</code> really shines in this domain. You’ll have to pull in the <code>rvar</code> package as well to run this next example, which will print out a random number pulled from a normal distribution with mean <code>100</code> and a standard deviation of <code>5</code>:</p>
+<p>That said, sometimes you need more. First off, what about different distributions? The normal distribution is a pretty common necessity. <a href="https://hackage.haskell.org/package/random-fu"><code>random-fu</code></a> really shines in this domain. You’ll have to pull in the <a href="https://hackage.haskell.org/package/rvar"><code>rvar</code></a> package as well to run this next example, which will print out a random number pulled from a normal distribution with mean <code>100</code> and a standard deviation of <code>5</code>:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad</span>
 <span class="kw">import </span><span class="dt">System.Random</span>
 <span class="kw">import </span><span class="dt">Data.Random</span>
@@ -145,7 +145,7 @@ main <span class="fu">=</span> <span class="kw">do</span>
   gen <span class="ot">&lt;-</span> newStdGen
   print (evalState normalNumber gen)</code></pre></div>
 <p>Notice the <code>State</code> pattern from earlier. Also, there a bunch of common distributions that ship with <code>random-fu</code>.</p>
-<p>One last thing I should mention is that we’re not tied to <code>StdGen</code>, the RNG that ships with <code>random</code>. There are faster ones, like <code>PureMT</code>, which is based on the Mersenne Twister algorithm. It’s an instance of <code>RandomGen</code> , so you can plug one of those in wherever you saw the generic type signature in this post. This is defined in <code>random-source</code>. For example, mixing it back into <code>MonadRandom</code>:</p>
+<p>One last thing I should mention is that we’re not tied to <code>StdGen</code>, the RNG that ships with <code>random</code>. There are faster ones, like <code>PureMT</code>, which is based on the Mersenne Twister algorithm. It’s an instance of <code>RandomGen</code> , so you can plug one of those in wherever you saw the generic type signature in this post. This is defined in <a href="https://hackage.haskell.org/package/random-source"><code>random-source</code></a>. For example, mixing it back into <code>MonadRandom</code>:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad.Random</span>
 <span class="kw">import </span><span class="dt">Data.Random.Source.PureMT</span>
 
