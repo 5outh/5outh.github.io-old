@@ -76,12 +76,7 @@ main <span class="fu">=</span> <span class="kw">do</span>
 <span class="kw">import </span><span class="dt">Control.Monad.State</span>
 
 <span class="ot">dieRoll ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">State</span> g <span class="dt">Int</span>
-dieRoll <span class="fu">=</span> <span class="kw">do</span>
-  gen <span class="ot">&lt;-</span> get
-  <span class="kw">let</span> (result, newGen) <span class="fu">=</span> randomR (<span class="dv">1</span>, <span class="dv">6</span>) gen
-  put newGen
-
-  pure result
+dieRoll <span class="fu">=</span> state (randomR (<span class="dv">1</span>, <span class="dv">6</span>))
 
 <span class="ot">twoDice ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">State</span> g <span class="dt">Int</span>
 twoDice <span class="fu">=</span> (<span class="fu">+</span>) <span class="fu">&lt;$&gt;</span> dieRoll <span class="fu">&lt;*&gt;</span> dieRoll
@@ -91,7 +86,7 @@ main <span class="fu">=</span> <span class="kw">do</span>
   gen <span class="ot">&lt;-</span> newStdGen
   print (evalState twoDice gen)</code></pre></div>
 <p>Now we can run more complex programs that employ random numbers. Note that <code>newStdGen</code> can be replaced with <code>mkStdGen :: Int -&gt; StdGen</code> if you want to provide an integral seed instead of using the global <code>StdGen</code>.</p>
-<p>You can avoid some of this boilerplate and get a few more benefits by bringing in the <a href="https://hackage.haskell.org/package/MonadRandom-0.5"><code>MonadRandom</code></a> package. Here’s some code that accomplishes the same goal using <code>MonadRandom</code>:</p>
+<p>You can avoid some of the state boilerplate and get a few more benefits by bringing in the <a href="https://hackage.haskell.org/package/MonadRandom-0.5"><code>MonadRandom</code></a> package. Here’s some code that accomplishes the same goal using <code>MonadRandom</code>:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">System.Random</span>
 <span class="kw">import </span><span class="dt">Control.Monad.Random</span>
 
@@ -105,7 +100,7 @@ twoDice <span class="fu">=</span> (<span class="fu">+</span>) <span class="fu">&
 main <span class="fu">=</span> <span class="kw">do</span>
   gen <span class="ot">&lt;-</span> newStdGen
   print (evalRand twoDice gen)</code></pre></div>
-<p>Apart from providing a nice way to write terse randomness code, <code>MonadRandom</code> has a couple of killer utilities; namely, the minimalistic sampling functions <code>uniform</code> and <code>fromList</code> (also <code>weighted</code> from <code>MonadRandom 0.5</code>). This program, for example, generates a list of 20 moves that might come up in a Dance Dance Revolution song:</p>
+<p>Apart from providing a nice way to write (slightly) terser randomness code, <code>MonadRandom</code> is more explicit about the domain we’re working in, and ships with a couple of killer utilities; namely, the minimalistic sampling functions <code>uniform</code> and <code>fromList</code> (also <code>weighted</code> from <code>MonadRandom 0.5</code>). This program, for example, generates a list of 20 moves that might come up in a Dance Dance Revolution song:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad</span>
 <span class="kw">import </span><span class="dt">Control.Monad.Random</span>
 <span class="kw">import </span><span class="dt">System.Random</span>
