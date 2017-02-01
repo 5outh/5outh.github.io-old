@@ -63,7 +63,7 @@ dieRoll <span class="fu">=</span> randomR (<span class="dv">1</span>, <span clas
 
 <span class="ot">main ::</span> <span class="dt">IO</span> ()
 main <span class="fu">=</span> <span class="kw">do</span>
-  <span class="co">-- New generater, generated from the system RNG </span>
+  <span class="co">-- New generator, generated from the system RNG </span>
   gen <span class="ot">&lt;-</span> newStdGen 
 
   <span class="kw">let</span> (result, newGen) <span class="fu">=</span> dieRoll gen
