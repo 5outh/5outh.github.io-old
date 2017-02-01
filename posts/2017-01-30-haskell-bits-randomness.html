@@ -145,7 +145,9 @@ main <span class="fu">=</span> <span class="kw">do</span>
   gen <span class="ot">&lt;-</span> newStdGen
   print (evalState normalNumber gen)</code></pre></div>
 <p>Notice the <code>State</code> pattern from earlier. Also, there a bunch of common distributions that ship with <code>random-fu</code>.</p>
-<p>One last thing I should mention is that we’re not tied to <code>StdGen</code>, the RNG that ships with <code>random</code>. There are faster ones, like <code>PureMT</code>, which is based on the Mersenne Twister algorithm. It’s an instance of <code>RandomGen</code> , so you can plug one of those in wherever you saw the generic type signature in this post. This is defined in <a href="https://hackage.haskell.org/package/random-source"><code>random-source</code></a>. For example, mixing it back into <code>MonadRandom</code>:</p>
+<p>One last thing I should mention is that we’re not tied to <code>StdGen</code>, the RNG that ships with <code>random</code>.</p>
+<p>In fact, it does not have strong statistical properties, and should probably be avoided for many “real” applications (See <a href="https://www.reddit.com/r/haskell/comments/3x15sm/why_is_the_first_random_value_produced_from_a/">this reddit post</a>, and thank you to reddit user tom-md for the note!).</p>
+<p>There are faster and more stable ones ones, like <code>PureMT</code> from <a href="https://hackage.haskell.org/package/random-source"><code>random-source</code></a> or <code>TFGen</code> from <a href="https://hackage.haskell.org/package/tf-random"><code>tf-random</code></a>. These are both instances of <code>RandomGen</code>, so you can plug either one of those in wherever you saw the generic type signature <code>RandomGen g =&gt; ...</code> in this post. For example, mixing <code>PureMT</code> back into <code>MonadRandom</code>:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad.Random</span>
 <span class="kw">import </span><span class="dt">Data.Random.Source.PureMT</span>
 
