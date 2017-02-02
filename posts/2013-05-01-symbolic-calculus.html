@@ -8,6 +8,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <link rel="stylesheet" type="text/css" href="../css/default.css" />
     <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <link rel="stylesheet" type="text/css" href="../css/site.css" />
     <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
     <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
     </script>
@@ -17,22 +18,25 @@
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css" />
     <link rel="stylesheet" href="../js/lightbox2/dist/css/lightbox.min.css" />
     <script type="text/javascript" src="../js/lightbox2/dist/js/lightbox-plus-jquery.js"></script>
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet">
   </head>
-  <body style="margin-left: auto; margin-right: auto; display: block">
+  <body style="margin-left: auto; margin-right: auto; display: block; width:800px">
     <div id="left"></div>
     <div class="wrapper">
       <header>
         <ul id="nav">
     <li><a href="../">Home</a></li>
     <li><a href="../contact.html">About</a></li>
+    <li><a href="../atom.xml">Atom</a></li>
+    <li><a href="../rss.xml">RSS</a></li>
 </ul>
 
 
-        <h1 id="blog_title">Abstract Nonsense</h1>
+        <h3 id="blog_title">Abstract Nonsense: Ramblings by Benjamin Kovach</h3>
       </header>
       <section>
         
-          <h3 class="post-title">Symbolic Calculus in Haskell</h3>
+          <h4 class="post-title">Symbolic Calculus in Haskell</h4>
         
         <p>
 <div class="post_body">
@@ -87,7 +91,8 @@ simplify ((c <span class="fu">:^:</span> <span class="dt">Const</span> b) <span 
 simplify (<span class="dt">Const</span> a <span class="fu">:*:</span> (<span class="dt">Const</span> b <span class="fu">:*:</span> expr)) <span class="fu">=</span> (<span class="dt">Const</span> <span class="fu">$</span> a<span class="fu">*</span>b) <span class="fu">:*:</span> (simplify expr)
 simplify (<span class="dt">Const</span> a <span class="fu">:*:</span> expr <span class="fu">:*:</span> <span class="dt">Const</span> b) <span class="fu">=</span> (<span class="dt">Const</span> <span class="fu">$</span> a<span class="fu">*</span>b) <span class="fu">:*:</span> (simplify expr)
 simplify (expr <span class="fu">:*:</span> <span class="dt">Const</span> a <span class="fu">:*:</span> <span class="dt">Const</span> b) <span class="fu">=</span> (<span class="dt">Const</span> <span class="fu">$</span> a<span class="fu">*</span>b) <span class="fu">:*:</span> (simplify expr)
-simplify (<span class="dt">Const</span> a <span class="fu">:*:</span> (b <span class="fu">:+:</span> c))        <span class="fu">=</span> (<span class="dt">Const</span> a <span class="fu">:*:</span> (simplify b)) <span class="fu">:+:</span> (<span class="dt">Const</span> a <span class="fu">:*:</span> (simplify c))
+simplify (<span class="dt">Const</span> a <span class="fu">:*:</span> (b <span class="fu">:+:</span> c)) <span class="fu">=</span>
+  (<span class="dt">Const</span> a <span class="fu">:*:</span> (simplify b)) <span class="fu">:+:</span> (<span class="dt">Const</span> a <span class="fu">:*:</span> (simplify c))
 
 simplify (<span class="dt">Const</span> <span class="dv">0</span> <span class="fu">:/:</span> a        ) <span class="fu">=</span> <span class="dt">Const</span> <span class="dv">0</span>
 simplify (<span class="dt">Const</span> a <span class="fu">:/:</span> <span class="dt">Const</span> <span class="dv">0</span>)   <span class="fu">=</span> error <span class="st">&quot;Division by zero!&quot;</span>
@@ -152,13 +157,39 @@ evalExpr' (a <span class="fu">:/:</span> b) <span class="fu">=</span> (evalExpr'
 <p>Now that we’ve extended our symbolic expressions to be able to be evaluated, let’s do what we set out to do – find derivatives!</p>
 <h4 id="derivatives">Derivatives</h4>
 <p>We aren’t going to get into super-complicated derivatives involving logorithmic or implicit differentiation, etc. Instead, we’ll keep it simple for now, and only adhere to some of the ‘simple’ derivative rules. We’ll need one of them for each of our six expression types: constants, variables, addition, multiplication, division, and exponentiation. We already know the following laws for these from calculus:</p>
-<p>——-|—————:<br />
-Differentiation of a constant | <span class="math inline">$\frac{d}{dx}k = 0$</span><br />
-Differentiation of a variable | <span class="math inline">$\frac{d}{dx}x = 1$</span><br />
-Addition differentiation | <span class="math inline">$\frac{d}{dx}\left(f(x) + g(x)\right) = \frac{d}{dx}f(x) +\frac{d}{dx}g(x)$</span><br />
-Power rule (/chain rule) | <span class="math inline">$\frac{d}{dx}f(x)^n = nf(x)^{n-1} \cdot \frac{d}{dx}f(x)$</span><br />
-Product rule | <span class="math inline">$\frac{d}{dx}\left(f(x) \cdot g(x)\right) = \frac{d}{dx}f(x) \cdot g(x) + f(x) \cdot \frac{d}{dx}g(x)$</span><br />
-Quotient rule | <span class="math inline">$\frac{d}{dx}\frac{f(x)}{g(x)} = \frac{\frac{d}{dx}f(x) \cdot g(x) - \frac{d}{dx}g(x) \cdot f(x)}{g(x)^2}$</span></p>
+<table style="width:86%;">
+<colgroup>
+<col width="37%" />
+<col width="48%" />
+</colgroup>
+<tbody>
+<tr class="odd">
+<td align="left">Differentiation of a constant:</td>
+<td align="right"><br /><span class="math display">$$\frac{d}{dx}k = 0$$</span><br /></td>
+</tr>
+<tr class="even">
+<td align="left">Differentiation of a variable:</td>
+<td align="right"><br /><span class="math display">$$\frac{d}{dx}x = 1$$</span><br /></td>
+</tr>
+<tr class="odd">
+<td align="left">Addition differentiation:</td>
+<td align="right"><br /><span class="math display">$$\frac{d}{dx}\left(f(x) + g(x)\right) = \frac{d}{dx}f(x) +\frac{d}{dx}g(x)$$</span><br /></td>
+</tr>
+<tr class="even">
+<td align="left">Power rule (/chain rule):</td>
+<td align="right"><br /><span class="math display">$$\frac{d}{dx}f(x)^n = nf(x)^{n-1} \cdot \frac{d}{dx}f(x)$$</span><br /></td>
+</tr>
+<tr class="odd">
+<td align="left">Product rule:</td>
+<td align="right"><br /><span class="math display">$$\frac{d}{dx}\left(f(x) \cdot g(x)\right) = \frac{d}{dx}f(x) \cdot g(x) + f(x) \cdot \frac{d}{dx}g(x)$$</span><br /></td>
+</tr>
+<tr class="even">
+<td align="left">Quotient rule:</td>
+<td align="right"><br /><span class="math display">$$\frac{d}{dx}\frac{f(x)}{g(x)} = \frac{\frac{d}{dx}f(x) \cdot g(x)
+- \frac{d}{dx}g(x) \cdot f(x)}{g(x)^2}$$</span><br /></td>
+</tr>
+</tbody>
+</table>
 <p>As it turns out, we can almost directly represent this in Haskell. There should be no surprises here – following along with the above rules, it is relatively easy to see how this function calculates derivatives. We will still error out if we get something like <span class="math inline"><em>x</em><sup><em>x</em></sup></span> as input, as it will require a technique we haven’t implemented yet. However, this will suffice for a many different expressions.</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">derivative ::</span> (<span class="dt">Num</span> a) <span class="ot">=&gt;</span> <span class="dt">Expr</span> a <span class="ot">-&gt;</span> <span class="dt">Expr</span> a
 derivative (<span class="dt">Var</span> c)           <span class="fu">=</span> <span class="dt">Const</span> <span class="dv">1</span>

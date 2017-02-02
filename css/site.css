@@ -1,0 +1,24 @@
+code {
+    font-size:15px;
+}
+
+div.sourceCode {
+    border: 3px solid ghostwhite;
+    padding-left: 6px;
+    line-height: 1.5;
+
+}
+
+body.p {
+    color: #373D3F;
+    font: 'Open Sans', sans-serif;
+}
+
+section {
+    line-height: 2;
+}
+
+li>a:hover {
+    text-decoration: underline;
+    font-size:1em;
+}

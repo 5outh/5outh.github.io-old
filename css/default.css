@@ -37,10 +37,6 @@ a:visited {
     line-height: 1.6em;
 }
 
-li > a:hover {
-    font-size: 1.02em;
-}
-
 #nav > li {
     display: inline-block;
     margin-right: 40px;
@@ -69,3 +65,6 @@ li > a:hover {
   margin-right:auto;
 }
 
+code: {
+    font-size:80px;
+}

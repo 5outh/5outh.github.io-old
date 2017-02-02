@@ -1,0 +1,912 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"
+    xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>Abstract Nonsense</title>
+        <link>http://kovach.me</link>
+        <description><![CDATA[Ramblings by Benjamin Kovach]]></description>
+        <atom:link href="http://kovach.me/rss.xml" rel="self"
+                   type="application/rss+xml" />
+        <lastBuildDate>Mon, 30 Jan 2017 00:00:00 UT</lastBuildDate>
+        <item>
+    <title>Haskell Bits #1: Randomness</title>
+    <link>http://kovach.me/posts/2017-01-30-haskell-bits-randomness.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<p>Haskell Bits is a new series of bite-sized posts that I hope will empower people to “get it done and move on”, providing useful information and links to learn more if desired. I’ll be providing full <code>main</code> files in each example (with imports!) to make porting this stuff into your own project as frictionless as possible. This first “Haskell Bit” will cover randomness.</p>
+<p>You need at least two things to produce a random number:</p>
+<ul>
+<li>An initial “seed” value</li>
+<li>A pure function that produces a new number from that seed. (“RNG”)</li>
+</ul>
+<p>That’s all for a single number.</p>
+<p>Most programming languages will hide these details from you unless you need them. Most of the time, you can just call <code>random()</code> and get a random number (typically between 0 and 1), using a seed value generated from some system variable that is always changing (current time in very small units is common).</p>
+<p>The simplest way to replicate this behavior in Haskell is by using the <code>System.Random</code> module, part of the <a href="https://hackage.haskell.org/package/random-1.1/docs/System-Random.html"><code>random</code></a> package.</p>
+<p>We can use <code>randomIO</code> and <code>randomRIO</code> to pull from a global RNG:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">System.Random</span>
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> <span class="kw">do</span>
+  <span class="co">-- A random `Double` between 0 and 1</span>
+  (<span class="ot">randomIO ::</span> <span class="dt">IO</span> <span class="dt">Double</span>) <span class="fu">&gt;&gt;=</span> print
+
+  <span class="co">-- A random `Int` between 1 and 6 (A die roll)</span>
+  randomRIO (<span class="dv">1</span>, <span class="dv">6</span>) <span class="fu">&gt;&gt;=</span> print</code></pre></div>
+<p>This is pretty much the interface that most other languages start with. Better would be to separate out IO as much as possible from the inevitable rest of our program. We can do that by confining IO usage to one operation: coming up with an initial RNG.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">System.Random</span>
+
+<span class="ot">dieRoll ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> g <span class="ot">-&gt;</span> (<span class="dt">Int</span>, g)
+dieRoll <span class="fu">=</span> randomR (<span class="dv">1</span>, <span class="dv">6</span>)
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> <span class="kw">do</span>
+  <span class="co">-- New generator, generated from the system RNG </span>
+  gen <span class="ot">&lt;-</span> newStdGen 
+
+  <span class="kw">let</span> (result, newGen) <span class="fu">=</span> dieRoll gen
+  print result
+
+  <span class="kw">let</span> (newResult, newNewGen) <span class="fu">=</span> dieRoll newGen
+  print newResult </code></pre></div>
+<p>We don’t want to duplicate this code every time we want to add a new die roll. The next logical step would be to sprinkle in some <code>State</code> to store the current RNG in:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">System.Random</span>
+<span class="kw">import </span><span class="dt">Control.Monad.State</span>
+
+<span class="ot">dieRoll ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">State</span> g <span class="dt">Int</span>
+dieRoll <span class="fu">=</span> state (randomR (<span class="dv">1</span>, <span class="dv">6</span>))
+
+<span class="ot">twoDice ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">State</span> g <span class="dt">Int</span>
+twoDice <span class="fu">=</span> (<span class="fu">+</span>) <span class="fu">&lt;$&gt;</span> dieRoll <span class="fu">&lt;*&gt;</span> dieRoll
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> <span class="kw">do</span>
+  gen <span class="ot">&lt;-</span> newStdGen
+  print (evalState twoDice gen)</code></pre></div>
+<p>Now we can run more complex programs that employ random numbers. Note that <code>newStdGen</code> can be replaced with <code>mkStdGen :: Int -&gt; StdGen</code> if you want to provide an integral seed instead of using the global <code>StdGen</code>.</p>
+<p>You can avoid some of the state boilerplate and get a few more benefits by bringing in the <a href="https://hackage.haskell.org/package/MonadRandom-0.5"><code>MonadRandom</code></a> package. Here’s some code that accomplishes the same goal using <code>MonadRandom</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">System.Random</span>
+<span class="kw">import </span><span class="dt">Control.Monad.Random</span>
+
+<span class="ot">dieRoll ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">Rand</span> g <span class="dt">Int</span>
+dieRoll <span class="fu">=</span> getRandomR (<span class="dv">1</span>, <span class="dv">6</span>)
+
+<span class="ot">twoDice ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">Rand</span> g <span class="dt">Int</span>
+twoDice <span class="fu">=</span> (<span class="fu">+</span>) <span class="fu">&lt;$&gt;</span> dieRoll <span class="fu">&lt;*&gt;</span> dieRoll
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> <span class="kw">do</span>
+  gen <span class="ot">&lt;-</span> newStdGen
+  print (evalRand twoDice gen)</code></pre></div>
+<p>Apart from providing a nice way to write (slightly) terser randomness code, <code>MonadRandom</code> is more explicit about the domain we’re working in, and ships with a couple of killer utilities; namely, the minimalistic sampling functions <code>uniform</code> and <code>fromList</code> (also <code>weighted</code> from <code>MonadRandom 0.5</code>). This program, for example, generates a list of 20 moves that might come up in a Dance Dance Revolution song:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad</span>
+<span class="kw">import </span><span class="dt">Control.Monad.Random</span>
+<span class="kw">import </span><span class="dt">System.Random</span>
+
+<span class="kw">data</span> <span class="dt">Direction</span> <span class="fu">=</span> <span class="dt">U</span> <span class="fu">|</span> <span class="dt">D</span> <span class="fu">|</span> <span class="dt">L</span> <span class="fu">|</span> <span class="dt">R</span> <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)
+
+<span class="ot">step ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">Rand</span> g <span class="dt">Direction</span>
+step <span class="fu">=</span> uniform [<span class="dt">U</span>,<span class="dt">D</span>,<span class="dt">L</span>,<span class="dt">R</span>]
+
+<span class="ot">stepWeighted ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">Rand</span> g <span class="dt">Direction</span>
+stepWeighted <span class="fu">=</span>
+    fromList [(<span class="dt">U</span>, <span class="dv">1</span>), (<span class="dt">D</span>, <span class="dv">1</span>), (<span class="dt">L</span>, <span class="dv">50</span>), (<span class="dt">R</span>, <span class="dv">100</span>)]
+
+<span class="ot">danceDanceRevolutionScroll ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">Rand</span> g [<span class="dt">Direction</span>]
+danceDanceRevolutionScroll <span class="fu">=</span> replicateM <span class="dv">20</span> <span class="fu">$</span> <span class="kw">do</span>
+    weightIt <span class="ot">&lt;-</span> uniform [<span class="dt">True</span>, <span class="dt">False</span>]
+    <span class="kw">if</span> weightIt <span class="kw">then</span> stepWeighted <span class="kw">else</span> step
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> <span class="kw">do</span>
+  gen <span class="ot">&lt;-</span> newStdGen
+  print (evalRand danceDanceRevolutionScroll gen)</code></pre></div>
+<p><code>fromList</code> lets you specify weights for your random elements. <code>L</code> and <code>R</code> will probably show up a lot more than the other two directions when this is run.</p>
+<p><code>MonadRandom</code> supplies some other conveniences as well, but it’s not crazy stuffed with functionality. It’s a nice package that contains the minimal amount of code to be useful but not overengineered.</p>
+<p>That said, sometimes you need more. First off, what about different distributions? The normal distribution is a pretty common necessity. <a href="https://hackage.haskell.org/package/random-fu"><code>random-fu</code></a> really shines in this domain. You’ll have to pull in the <a href="https://hackage.haskell.org/package/rvar"><code>rvar</code></a> package as well to run this next example, which will print out a random number pulled from a normal distribution with mean <code>100</code> and a standard deviation of <code>5</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad</span>
+<span class="kw">import </span><span class="dt">System.Random</span>
+<span class="kw">import </span><span class="dt">Data.Random</span>
+<span class="kw">import </span><span class="dt">Data.RVar</span>
+<span class="kw">import </span><span class="dt">Control.Monad.State</span>
+
+<span class="ot">normalNumber ::</span> <span class="dt">State</span> <span class="dt">StdGen</span> <span class="dt">Double</span>
+normalNumber <span class="fu">=</span> sampleRVar (normal <span class="dv">100</span> <span class="dv">5</span>)
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> <span class="kw">do</span>
+  gen <span class="ot">&lt;-</span> newStdGen
+  print (evalState normalNumber gen)</code></pre></div>
+<p>Notice the <code>State</code> pattern from earlier. Also, there a bunch of common distributions that ship with <code>random-fu</code>.</p>
+<p>One last thing I should mention is that we’re not tied to <code>StdGen</code>, the RNG that ships with <code>random</code>.</p>
+<p>In fact, it does not have strong statistical properties, and should probably be avoided for many “real” applications (See <a href="https://www.reddit.com/r/haskell/comments/3x15sm/why_is_the_first_random_value_produced_from_a/">this reddit post</a>, and thank you to reddit user tom-md for the note!).</p>
+<p>There are faster and more stable ones ones, like <code>PureMT</code> from <a href="https://hackage.haskell.org/package/random-source"><code>random-source</code></a> or <code>TFGen</code> from <a href="https://hackage.haskell.org/package/tf-random"><code>tf-random</code></a>. These are both instances of <code>RandomGen</code>, so you can plug either one of those in wherever you saw the generic type signature <code>RandomGen g =&gt; ...</code> in this post. For example, mixing <code>PureMT</code> back into <code>MonadRandom</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad.Random</span>
+<span class="kw">import </span><span class="dt">Data.Random.Source.PureMT</span>
+
+<span class="ot">dieRoll ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">Rand</span> g <span class="dt">Int</span>
+dieRoll <span class="fu">=</span> getRandomR (<span class="dv">1</span>, <span class="dv">6</span>)
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> newPureMT <span class="fu">&gt;&gt;=</span> print <span class="fu">.</span> evalRand dieRoll </code></pre></div>
+<p>Is there anything else you’d like to know about randomness in Haskell? Let me know in the comments!</p>
+<p>Ben</p>
+</div>
+]]></description>
+    <pubDate>Mon, 30 Jan 2017 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2017-01-30-haskell-bits-randomness.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
+    <title>External Stuff</title>
+    <link>http://kovach.me/posts/2017-01-27-external-stuff.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<p>I realized this morning that I don’t have links to any of this external-but-relevant stuff anywhere on the site, and I want to change that just to keep everything in one place!</p>
+<p>Last year, I wrote a guest post on Stack Overflow’s hiring blog about my preferred technical interviewing strategy. <a href="https://www.stackoverflowbusiness.com/blog/interviewing-a-developer-try-the-project-walkthrough-technique">You can read about the project walkthrough technique here.</a></p>
+<p>I have a YouTube channel! I ran a series called “Breakfast Bash” here containing little blurbs about basic computer science concepts. There’s also a three hour Haskell workshop VOD put together by me and Matt Parsons. <a href="https://www.youtube.com/user/5outhSix">You can see that here.</a></p>
+<p>I gave a talk at the Developers of Athens Meetup Group about Lockhart’s Lament and how it applies to programming. <a href="/pdfs/lockharts-lament.key">The slides are here</a>; I would love to give this talk again to a larger crowd.</p>
+<p>That’s all for now! Just some stuff I wanted to consolidate.</p>
+</div>
+]]></description>
+    <pubDate>Fri, 27 Jan 2017 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2017-01-27-external-stuff.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
+    <title>Announcing Trash Kings</title>
+    <link>http://kovach.me/posts/2017-01-22-trash-kings.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<p>I’m working on a tile laying game! It’s called <em>Trash Kings</em>. Here’s the premise:</p>
+<blockquote>
+<p><em>It’s drop-off day at the dump. As a scavenging rodent, you must do what ever it takes to earn your claim over the wealth of new garbage. Will you gather the best waste and earn the title of Trash King?</em></p>
+</blockquote>
+<p>Here’s what the prototype looks like:</p>
+<p><img width="80%" src="/images/trash_kings_prototype.jpg"></img></p>
+<p>In <em>Trash Kings</em>, players place tiles on an expanding board in order to create and claim mounds. Players will gain points based on mounds they claim throughout the game. The player with the most points at the end wins!</p>
+<p>The game draws a lot of inspiration from <a href="https://boardgamegeek.com/boardgame/822/carcassonne">Carcassonne</a>, but there are a few mechanics that make it feel unique. In Trash Kings, you have the option of swapping tiles around on the game board in order to create areas to control.</p>
+<p>Certain configurations of tiles prevent other players from swapping out important tiles on the game board, and using these is the key to beating out your opponents. Also, the way the game is scored during and at the end of the game differs, necessitating the use of multiple strategies during the course of the game.</p>
+<p>You can download the rulebook <a href="/pdfs/trash_kings_rule_book.pdf">here</a>, and a print &amp; play version of the game <a href="/pdfs/game_components.pdf">here</a>.</p>
+<p><em>Trash Kings</em> is very much a work in progress. Every time I have played it (with my wife, or alone as multiple players) I tweak something about it. I’m open to any and all feedback, which can be sent to <a href="mailto:bkovach13@gmail.com">bkovach13@gmail.com</a> or left as a comment on this blog post.</p>
+<p>Enjoy!</p>
+</div>
+]]></description>
+    <pubDate>Sun, 22 Jan 2017 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2017-01-22-trash-kings.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
+    <title>Italy Travel Log</title>
+    <link>http://kovach.me/posts/2016-12-28-honeymoon.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<h2 id="venice">12/12/2016 (Venice)</h2>
+<p>Today we finished up the longest flight of our lives! 12 hours to Paris, then 2 more into Venice with hardly any rest. We made our way to the hotel via a bus ride and a water bus (vaporetto) ride through the Grand Canal. Fewer people speak English than we expected, but we’re getting by. Thanks Duolingo! Our B&amp;B hosts at <a href="http://www.dimoramarciana.com/">Dimora Marciana</a> are all really nice, and gave us food recommendations and a walking route to get a feel for the city. After crashing for about an hour in the hotel room, we ate at one of the recommended restaurants. I accidentally ordered something with nuts, so Amanda and I ended up having to switch dishes, leaving her with a sad couscous salad, and I ate the delicious cannelloni she ordered. Oops! Otherwise, it was pretty good! After lunch, we set off on the recommended walking route, which took us through San Marco, the Accademia district, Dorsoduro, over the Rialto bridge and back to our hotel. Very pretty and maze-like with lots of interesting shops along the way. Amanda remembers nothing from that walk, since she was a sleep-deprived zombie. Thank goodness for pictures! We stopped briefly for some cappuccinos at a cafe (which we later learned was a faux pas- no milk after breakfast!). We were hungry for dinner around 5:30, but no restaurants are open between 2:30 and 6:30… so we ate gelato for dinner! Heading in for an early bedtime (like 6:00 PM) because we are both exhausted.</p>
+<p><a data-lightbox="day-1" href="/images/italy/day1/IMG_1318.jpg"
+  data-title="Canals"> <img class="round-image"
+      src="/images/italy/day1/IMG_1318.jpg"
+      style="height:200px; border-radius:4px;margin:5px"/> </a> <a data-lightbox="day-1"
+  data-title="View from the Rialto Bridge"
+  href="/images/italy/day1/IMG_1319.jpg"> <img class="round-image"
+        src="/images/italy/day1/IMG_1319.jpg"
+        style="height:200px; border-radius:4px;margin:5px"/> </a> <a data-lightbox="day-1"
+  data-title=""
+  href="/images/italy/day1/IMG_1321.jpg"> <img class="round-image"
+        src="/images/italy/day1/IMG_1321.jpg"
+        style="height:200px; border-radius:4px;margin:5px"/> </a> <a data-lightbox="day-1" href="/images/italy/day1/IMG_1324.jpg"> <img class="round-image"
+        src="/images/italy/day1/IMG_1324.jpg"
+        style="height:200px; border-radius:4px;margin:5px"/> </a> <a data-lightbox="day-1" data-title="Rialto at sunset"
+  href="/images/italy/day1/IMG_1325.jpg"> <img class="round-image"
+        src="/images/italy/day1/IMG_1325.jpg"
+        style="height:200px; border-radius:4px;margin:5px"/> </a> <a data-lightbox="day-1" data-title="Our marked up Venice map!" href="/images/italy/day1/IMG_1690.jpg"> <img class="round-image"
+        src="/images/italy/day1/IMG_1690.jpg"
+        style="height:200px; border-radius:4px;margin:5px"/> </a></p>
+<h2 id="venice-1">12/13/2016 (Venice)</h2>
+<p>We slept like babies! And breakfast at Dimora Marciana was so good! Excellent cappuccinos and a variety of pastries, meats, cheeses and croissants. Every espresso drink here is perfect! How do they do it?? After breakfast, we set out for Piazza San Marco with an audio tour we’d downloaded onto our phones. This was a good idea, because it pointed out a lot of interesting subtle details about the piazza that we wouldn’t have noticed otherwise. For example, the surrounding buildings are built with three completely separate styles of column, because the floors were built in different eras. Visual stories are also told on the columns beneath Doge’s Palace (the dwelling place of the historic ruler of Venice) - very cool. We saw a carving story of a couple meeting, courting, marrying, conceiving a child, hugging their child, finding out the child is sick, and then burying their child…Poor little statue family :( After the audio tour, we went into Doge’s Palace, which has been turned into a museum. Every ceiling is painted beautifully; it’s incredible. The transition from the palace to the jails (over the Bridge of Sighs) is a surreal experience. It’s a weird couple of steps from gilded halls to drab, thick stone walls and plain prison cells. When we were done, we walked around town a little and found a place to eat. I had seafood risotto (with lots of seafood I’d never seen before!) and Amanda had some salmon pasta. Both were delicious. We took an afternoon break and waited for a vegetarian place to open for dinner. We wandered around for an hour and a half through the rainy alleyways, dodging beggar ladies and getting chased by a man who wanted to sell us a rose. It was really dark and creepy, and the restaurant was hard to find. When we finally found it and then waited for them to open, they were completely booked! Huge bummer, but we went to a place called Tuttinpietti instead for some pasta, which we ate in our room. It was great anyway, so whatever. Afterwards, we set back out for a gelato place called SuSo, determined to mark off a win for the night. We got super lost, and by the time we found it, it had just closed! Agh! We went back to our rooms, tired and gelato-less, ate some chocolate raisins that we had brought on the plane for dessert and went to bed. Oh well! Dessert before dinner tomorrow! Eventually we’ll figure out this meal thing…</p>
+<p><a data-lightbox="day-2" href="/images/italy/day2/IMG_1327.jpg" data-title="Saint Mark's Cathedral"><img src="/images/italy/day2/IMG_1327.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1330.jpg" data-title=""><img src="/images/italy/day2/IMG_1330.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1332.jpg" data-title="The Watchtower"><img src="/images/italy/day2/IMG_1332.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1336.jpg" data-title=""><img src="/images/italy/day2/IMG_1336.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1338.jpg" data-title="Amanda's appropriate reaction to the Bridge of Sighs"><img src="/images/italy/day2/IMG_1338.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1340.jpg" data-title=""><img src="/images/italy/day2/IMG_1340.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1343.jpg" data-title="Creepy"><img src="/images/italy/day2/IMG_1343.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1351.jpg" data-title="Ceilings in Doge's Palace"><img src="/images/italy/day2/IMG_1351.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1357.jpg" data-title=""><img src="/images/italy/day2/IMG_1357.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1358.jpg" data-title="More ceilings"><img src="/images/italy/day2/IMG_1358.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1361.jpg" data-title="Zweihanders!"><img src="/images/italy/day2/IMG_1361.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1364.jpg" data-title=""><img src="/images/italy/day2/IMG_1364.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1366.jpg" data-title="A family tree"><img src="/images/italy/day2/IMG_1366.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1367.jpg" data-title="Walking through the Bridge of Sighs"><img src="/images/italy/day2/IMG_1367.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1371.jpg" data-title="Down into the prisons"><img src="/images/italy/day2/IMG_1371.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1372.jpg" data-title=""><img src="/images/italy/day2/IMG_1372.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1383.jpg" data-title=""><img src="/images/italy/day2/IMG_1383.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1388.jpg" data-title=""><img src="/images/italy/day2/IMG_1388.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1389.jpg" data-title="???"><img src="/images/italy/day2/IMG_1389.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1393.jpg" data-title="Cool hotel we randomly found while walking around at night"><img src="/images/italy/day2/IMG_1393.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1396.jpg" data-title=""><img src="/images/italy/day2/IMG_1396.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-2" href="/images/italy/day2/IMG_1376.jpg" data-title=""><img src="/images/italy/day2/IMG_1376.jpg" style="height:200px; border-radius:4px;margin:5px"/></a></p>
+<h2 id="venice-2">12/14/2016 (Venice)</h2>
+<p>We had planned to tour the islands (Murano and Burano) today, but we woke up groggy and postponed. Instead, we looked into touring Peggy Guggenheim’s old house-turned-museum. It was a very interesting place with exciting exhibits of modern art. Also, Gwendoline Christie (Brienne of Tarth from Game of Thrones) was there with us! Crazy! After the tour, we wandered around the Accademia district and made our way all the way to “the point” at the end of the island. It was a foggy, chilly day, but it was still very beautiful and peaceful. After a mediocre lunch at a touristy place, we rested for a bit. A little later on, we went to a place called I Tre Mercanti for some tiramisu (dessert before dinner!). It was so good that we inhaled it (literally…it was hard not to choke on all the cocoa powder on top)! Acqua Alta Libraria was in the same part of town, so we checked it out. This place must have been the coolest bookstore on the planet. The building is full of books from floor to ceiling, piled on tables and old gondolas. We grabbed a couple of Christmas gifts here and headed back to the hotel room, still very tired from jet lag and the last few days. Looking forward to the Murano/Burano trip tomorrow!</p>
+<p><a data-lightbox="day-3" href="/images/italy/day3/IMG_1402.jpg" data-title=""><img src="/images/italy/day3/IMG_1402.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-3" href="/images/italy/day3/IMG_1406.jpg" data-title=""><img src="/images/italy/day3/IMG_1406.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-3" href="/images/italy/day3/IMG_1413.jpg" data-title="Acqua Alta Libraria"><img src="/images/italy/day3/IMG_1413.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-3" href="/images/italy/day3/IMG_1414.jpg" data-title=""><img src="/images/italy/day3/IMG_1414.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-3" href="/images/italy/day3/IMG_1404.jpg" data-title="View from 'the point'"><img src="/images/italy/day3/IMG_1404.jpg" style="height:200px; border-radius:4px;margin:5px"/></a></p>
+<h2 id="murano-burano">12/15/2016 (Murano, Burano)</h2>
+<p>We got a good night’s rest last night and headed out to get on a boat to Burano island late in the morning. The walk was nice - the area near Fondamente Nove (the water bus station) was relaxed. We hopped on a water bus and passed a few islands - a walled city, and Murano, the glass blowing island. The travel time to Burano was pretty long (about 50 minutes) but we eventually made it to the island of lace and colorful houses! It was kind of like a very-tiny Venice with a small fraction of the population. We sought out the lace museum, which was a disappointment, but only 5 euros each, so whatever. It turns out that the history of lace is super boring! But there were old women from Burano making lace there, which was a fascinating process! We expected to spend more time there, so we had some downtime for a coffee (coffee in Italy means a single shot of espresso) at a local bar before our lunch reservation. We also walked around the island for a while, saw the leaning clock tower, and relaxed by the seaside. Lunch was intense. We went to a place called Gatto Nero and both had a portion of seafood spaghetti; it was the most involved meal I’ve ever eaten, with several shellfish and other seafood. It was super tasty. The second course was a plate of seafood fritto misto. Some of that was good and some of it wasn’t. I liked this part a lot more than Amanda did. The best part of the plate was fried salted cod. We split a bottle of tasty white wine with this meal, too, then capped off the 2 hour long lunch with a shot of espresso. It was getting late in the day at this point, but we wanted to see Murano, so we got on the next water taxi and headed that way. We browsed a couple of shops here and picked up some glass creations. The glass here was stunning; I wish we’d been able to stay a bit longer, but it was getting late and dark. For the first time, we understood why dinner here is served so late- after that huge, long lunch, we were not expecting to be hungry until at least 8:00! When we got back to mainland Venice, we stopped by a shop for a hot chocolate, which is more like a shot of warm chocolate than the kind we’re used to. Something from the day ended up making Amanda sick that night, unfortunately. :( Her sickness was so rough, that she got actual whiplash from throwing up so hard. She keeps calling it “power puking”…gross.</p>
+<p><a data-lightbox="day-4" href="/images/italy/day4/IMG_1419.jpg" data-title="Colorful Burano houses!"><img src="/images/italy/day4/IMG_1419.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-4" href="/images/italy/day4/IMG_1420.jpg" data-title="Cats!"><img src="/images/italy/day4/IMG_1420.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-4" href="/images/italy/day4/IMG_1421.jpg" data-title=""><img src="/images/italy/day4/IMG_1421.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-4" href="/images/italy/day4/IMG_1426.jpg" data-title="Amanda with some guy"><img src="/images/italy/day4/IMG_1426.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-4" href="/images/italy/day4/IMG_1428.jpg" data-title=""><img src="/images/italy/day4/IMG_1428.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-4" href="/images/italy/day4/IMG_1430.jpg" data-title="Our crazy seafood spaghetti"><img src="/images/italy/day4/IMG_1430.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-4" href="/images/italy/day4/IMG_1431.jpg" data-title="'Coffee is an art'"><img src="/images/italy/day4/IMG_1431.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-4" href="/images/italy/day4/IMG_1432.jpg" data-title="Huge glass sculpture in Murano"><img src="/images/italy/day4/IMG_1432.jpg" style="height:200px; border-radius:4px;margin:5px"/></a></p>
+<h2 id="venice-3">12/16/2016 (Venice)</h2>
+<p>A day of rest! Mandy needed some recovery time from last night, so we didn’t do a whole lot. We did get some delicious fresh pasta from a place called Dal Moro’s for lunch, though. I spent a bit of the day planning for what to do in Florence. We rallied a little later to go grab a slice of pizza for dinner at Antico Forno. Venice was much busier on a Friday night, and there was even a (very good!) violinist playing music in one of the squares. The pizza, the walk, and the sparkling Christmas lights strung all around were really nice. A magical way to end our time in Venice!</p>
+<h3 id="veniceflorence">12/17/2016 (Venice/Florence)</h3>
+<p>This was the day we left Venice. We walked up to Rialto Bridge with our packed luggage and took a water bus to the train station. It was a beautiful day, so we sat in front, on the exterior of the boat. This is maybe my favorite part about Venice -boating down the Grand Canal is absolutely stunning! Once we made it to the train station, we had to gather our bearings. Neither of us had ever ridden on an EU train (or any passenger train?) before, so we weren’t sure of what to do. We eventually found our train and our seats and settled in. Well, so we thought - we were wrong! At the second stop, some Italian women kicked us out of our seats and we moved to the proper section of the train. After that minor speed bump, the ride was comfortable and quick. The destination train station in Florence was really overwhelming, though. The largest crowds we encountered in Venice were miniscule compared to the ones we found in Florence! We searched around everywhere for a bathroom in a huge crowd and had to ask a few people how to find the bus we were looking for. It all worked out, but there were thousands of people in the station and our bus came really late. Eventually it did come, and after a 20 minute bus ride, we arrived at our destination - the base of the hil our hotel sat on. Trudging up the hill with our heavy luggage on our backs was <em>so hard</em> after such an exhausting day, but finally arriving at the hotel in the Tuscan hills was a huge relief. We got a brief tour of the grounds at <a href="http://www.villaagape.it/">Villa Agape</a> and crashed for a little while. We had booked a wine tour for that night, though, so we couldn’t relax for too long! We were also starving after traveling with no lunch and were desperate to eat. So, we had our hotel’s shuttle drive us into Florence and we found a place to eat (hot pots with dumplings for a little variety; not that good!) and then made our way to Ponte Vecchio afterwards. Ponte Vecchio is the oldest bridge in Florence, and the meetup point for the start of our wine tour. Turns out, we were the only ones who booked the tour, so we got a surprise private tour of the city! We got some little wine glasses to carry around town and were shown some interesting landmarks (mostly little historic things about the city). As for wine, we tasted 5 kinds and ate some crostini. Amanda was still queasy about drinking white wine, but I enjoyed all of it! The most interesting story was the one about the “black rooster” emblem on Chianti wine bottles. We ended the tour at the duomo - a huge, beautiful, green and white church that took 150 years to complete! Then we got picked up by our hotel shuttle and crashed hard.</p>
+<video id="gondolas" width="640" preload controls>
+<source src="/images/italy/day5/gondola.mov" />
+</video>
+<p><a data-lightbox="day-5" href="/images/italy/day5/IMG_1448.jpg" data-title="Bye Venice!"><img src="/images/italy/day5/IMG_1448.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-5" href="/images/italy/day5/IMG_1472.jpg" data-title=""><img src="/images/italy/day5/IMG_1472.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-5" href="/images/italy/day5/IMG_1475.jpg" data-title=""><img src="/images/italy/day5/IMG_1475.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-5" href="/images/italy/day6/0YTw7.jpeg" data-title="New map, Florence this time!"><img src="/images/italy/day6/0YTw7.jpeg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-5" href="/images/italy/day6/IMG_1481.jpg" data-title="Our bed in Villa Agape"><img src="/images/italy/day6/IMG_1481.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-5" href="/images/italy/day6/IMG_1483.jpg" data-title="Hot pots "><img src="/images/italy/day6/IMG_1483.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-5" href="/images/italy/day6/IMG_1486.jpg" data-title="Important statue on Ponte Vecchio?"><img src="/images/italy/day6/IMG_1486.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-5" href="/images/italy/day6/IMG_1488.jpg" data-title="View from Ponte Vecchio at night"><img src="/images/italy/day6/IMG_1488.jpg" style="height:200px; border-radius:4px;margin:5px"/></a></p>
+<h3 id="florence">12/18/2016 (Florence)</h3>
+<p>This was our food tour day, so we woke up extra early to meet with the tour guide at 9:30! We ate a tiny bite to eat at the hotel so we would be hungry for the tour and got the earliest shuttle ride possible to meet up in time. We told the shuttle driver to pick us up at 6:30 that evening, since we anticipated doing some museum tours and shopping after the 4-hour food tour. Sadly, once we rushed across town to get there in time, we suddenly realized…nobody else was there. We had done all that and we had shown up for the tour on the wrong day! Major oops! After kicking ourselves (and laughing a lot) for messing up so badly, we decided to make the most of the day anyway. We headed to the Uffizi gallery first. Wow, that museum is huge! There were a ton of paintings and statues - just the amount of art in one place was impressive. The most popular parts were the few Da Vinci and Michelangelo paintings. I didn’t get a picture, but I also loved the shield with medusa’s head painted on it. We found a little sandwich shop called Antico Noe and had some roast beef paninis on a little back road afterwards (we were <em>starving</em>! We were expecting a food tour!). Afterwards, we found a little pastry shop and split a chocolate ganache tart with some coffee. Oooh yummy! The never-ending bakery options were heaven to Amanda! Then we wandered around looking for the Christmas market. We thought we found it, but what we found was actually a tiny little market square, with some church bake sale going on. Eventually, we wandered into the real Christmas market, which is significantly bigger and in a large square. It’s mostly German food and imported things. A little underwhelming.</p>
+<p>We still had half a day left before the shuttle was coming back, so we decided to visit the Boboli Gardens. These are the expansive sculpture gardens behind the Pitti Palace, which was home to Cosimo I of the Medici family. Holy cow, that place is <em>massive</em>! And beautiful, too! We saw a man feeding some ducks and pigeons in a pond, and a happy kid playing with the pigeons - a couple of nice, memorable moments. Along with the Boboli Gardens ticket, we got access to a costume museum, which we visited after exhausting ourselves in the gardens. The old clothing was neat, especially the clothes that the royal family (Cosimo I and Eleanora) had been buried in, although it was a bit morbid. Afterwards, we popped into a pastry shop for a cannoli - Amanda had been looking for a good one. We split it and it was really yummy! I wish we had gotten two. For dinner, Mandy was feeling a little homesick and found some American place called The Diner. It was weird to see a depiction of US culture in Italy - they had paintings of historical desegregation moments and fat people on the walls! I had some particularly odd pureed chicken soup, and Amanda ate a burger and fries. The burger wasn’t bad! Not long after we ate, we got picked up and went to bed around 8 PM. This was one of the most exhausting days of my life. We walked a total of 10 miles, and boy were our legs sore!</p>
+<p><a data-lightbox="day-7" href="/images/italy/day7/IMG_1498.jpg" data-title="Duomo"><img src="/images/italy/day7/IMG_1498.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1535.jpg" data-title="Art!"><img src="/images/italy/day7/IMG_1535.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1536.jpg" data-title=""><img src="/images/italy/day7/IMG_1536.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1544.jpg" data-title="This man has no skin..."><img src="/images/italy/day7/IMG_1544.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1548.jpg" data-title=""><img src="/images/italy/day7/IMG_1548.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1551.jpg" data-title="Hermaphrodite, cool sculpture"><img src="/images/italy/day7/IMG_1551.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1553.jpg" data-title=""><img src="/images/italy/day7/IMG_1553.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1555.jpg" data-title=""><img src="/images/italy/day7/IMG_1555.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1556.jpg" data-title=""><img src="/images/italy/day7/IMG_1556.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1564.jpg" data-title=""><img src="/images/italy/day7/IMG_1564.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1565.jpg" data-title="Leo!"><img src="/images/italy/day7/IMG_1565.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1580.jpg" data-title=""><img src="/images/italy/day7/IMG_1580.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1582.jpg" data-title="Pitti Palace is huge"><img src="/images/italy/day7/IMG_1582.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1587.jpg" data-title="Tired from the walking"><img src="/images/italy/day7/IMG_1587.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1588.jpg" data-title="Turtles are holdiing this up!"><img src="/images/italy/day7/IMG_1588.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1594.jpg" data-title=""><img src="/images/italy/day7/IMG_1594.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1598.jpg" data-title="Nelson Bighetti"><img src="/images/italy/day7/IMG_1598.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1603.jpg" data-title=""><img src="/images/italy/day7/IMG_1603.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1610.jpg" data-title=""><img src="/images/italy/day7/IMG_1610.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1613.jpg" data-title="My favorite shot from the whole trip. Beautiful view!"><img src="/images/italy/day7/IMG_1613.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1615.jpg" data-title="Old clothes"><img src="/images/italy/day7/IMG_1615.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-7" href="/images/italy/day7/IMG_1597.jpg" data-title="Bird man with his pigeons and ducks"><img src="/images/italy/day7/IMG_1597.jpg" style="height:200px; border-radius:4px;margin:5px"/></a></p>
+<h3 id="florence-1">12/19/2016 (Florence)</h3>
+<p>We slept well last night. We had to get up early today to catch the <em>real</em> food tour, which was rough but we managed. We ate a little more this morning than yesterday, because it was painful to deprive ourselves of delicious free breakfast two days in a row, and we headed out to our first stop - a butcher shop! There were wild boar heads on the wall, sausages hanging from the ceiling, and tons of prosciuttos curing on the walls. It was like nothing I’ve ever seen before. There were seven of us on the tour - four from Wisconson and one other guy from Suwanee, GA (where I grew up)! Small world! Everyone was really nice, including our amazing tour guide, Martina. We started off by tasting a few prosciuttos, one cured with only salt and one with black pepper added. We went to a bakery next. We had some coccoli (a savory fried bread donut thing) with mozzarella and tomato inside. The next stop was the big one - the central market - a giant, two story farmer’s market. We ate some sandwiches with boiled brisket on the bottom floor and took a short break for some coffee and shopping upstairs. After the break, we hit up a pastry shop for some cream pasteries (very big buttery custard danish-type things) and headed to an enoteca - a wine bar - to have some crostini and wine. This place was small but packed full of wine, oil, balsamic vinegar and a variety of cheeses for sale. Here I learned that real balsamic vinegar is incredible, but expensive. It costs 90 euros for a small bottle, fermented and bottled by the Modena government. Olive oil in Italy also has a much stronger flavor, which is quite nice. All of the crostini and appetizer-type things we ate were good as well, except the “special treat” of a liver-based topping, Crostini Toscani, which we didn’t like. The wines we tasted here were good, but the real stars of this stop were the oil and vinegar, surprisingly! The last stop on the tour was a chocolate shop called Vestri. The family who owns this place controls every step of the chocolate production, from the cacao farm to finished chocolate. The chocolate was some of the best we’ve ever had; I tried a sipping chocolate “shot” with some anice liqueur. Yum. We then parted ways. I highly recommend doing one of these food tours in Florence; it was probably our favorite part of the whole trip.</p>
+<p>We had two hours before our shuttle was scheduled to pick us up, so we decided to check out the Museo Galilei before heading back to the hotel. This was a very interesting museum, containing lots of old scientific tools. One of the most impressive was a three dimensional “map of the universe” that took 5 years to complete. Lots of other hidden treasures in here as well. I’m glad we went; it was a nice break from art museums, but it was torture that we couldn’t play with the amazing tools and devices! Afterwards, we waited for our shuttle for 15 minutes before realizing…they weren’t coming. We had to find a phone to use to call the hotel. We walked and walked, looking for pay phones, which were all BROKEN, or tourism offices, which were completely unhelpful! Eventually, we came across another hotel and asked the concierge (named Eliza - We’ll never forget her because it felt like she was saving our lives!!) to help us out. She got a hold of the shuttle and we were able to finally get picked up soon after. We were stranded for a minute, though, after an extremely long day! I was getting very cranky. We rested for a few hours before heading down to San Miniaio Square for dinner. We ate pizza with delicious Italian toppings like truffles and prosciutto. It was lovely. It’s supposed to rain tomorrow but we’re going to try to see David and finish our Christmas shopping. Other than that, we’ll try to relax and get ready for the trip home. Amanda has been nocturnal since her night up with food poisoning, and her neck still can’t turn, so we will try visiting a pharmacy tomorrow.</p>
+<p><a data-lightbox="day-8" href="/images/italy/day8/IMG_1626.jpg" data-title="Real stuffed pigs playing poker??"><img src="/images/italy/day8/IMG_1626.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1628.jpg" data-title="Chocolate!"><img src="/images/italy/day8/IMG_1628.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1631.jpg" data-title="Wine!"><img src="/images/italy/day8/IMG_1631.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1633.jpg" data-title="More chocolate!"><img src="/images/italy/day8/IMG_1633.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1634.jpg" data-title="Dante Alighieri"><img src="/images/italy/day8/IMG_1634.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1635.jpg" data-title=""><img src="/images/italy/day8/IMG_1635.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1640.jpg" data-title="Map of the universe"><img src="/images/italy/day8/IMG_1640.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1642.jpg" data-title=""><img src="/images/italy/day8/IMG_1642.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1646.jpg" data-title="A flat map of the world"><img src="/images/italy/day8/IMG_1646.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1652.jpg" data-title="That's Galileo's REAL, DEAD FINGER"><img src="/images/italy/day8/IMG_1652.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1655.jpg" data-title=""><img src="/images/italy/day8/IMG_1655.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1659.jpg" data-title="Things that can go wrong with childbirth :X"><img src="/images/italy/day8/IMG_1659.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-8" href="/images/italy/day8/IMG_1666.jpg" data-title="Za"><img src="/images/italy/day8/IMG_1666.jpg" style="height:200px; border-radius:4px;margin:5px"/></a></p>
+<h2 id="florence-2">12/20/2016 (Florence)</h2>
+<p>We did get some relaxation in today! Breakfast was good, but Amanda tried to get by on cheese and honey (a weird choice). We slept in a bit and headed out of the hotel around 10:00. We immediately headed towards the Accademia Gallery, where David is located. After waiting in a line for about 20 minutes, we made it in. Everyone and their mother told us to pre-purchase a ticket online to skip the waiting part. We should have listened, but it could have been much worse! The museum isn’t very big; it’s just a single corridor and a few rooms. The main attraction really is David. It is hugely impressive, though. We both found the full-size statue remarkable. We spent probably 20 minutes there, staring at the giant statue and browsing some of Michelangelo’s unfinished sculptures. Afterwards, it was shopping day! First, we found a reputable leather shop and got Amanda a new purse. This place was in the market square, so we picked up some veggie samosas from a hole in the wall Indian restaurant for lunch while we were in the area. The next stop was the huge central market for food-related gifts! Here, we got some cheese, oil, vinegar and coffee for our friends and family. We also caved and bought some traditional balsamic vinegar for ourselves. The last stop we made was at Massimo Ravinale for some silk; the man who helped us out was notably very helpful. After a quick last-minute cannoli (we can’t stop eating dessert in between every meal!), we went back to the hotel and packed some stuff up in preparation for tomorrow. And we binge watched Please Like Me (it’s an Australian show on European Netflix here). It was a nice stretch of relaxation we’d been needing. At 7:30, we went to dinner at a place called Zeb, which was recommended by our food tour guide. We had two types of ravioli (pear-peccorino and yellow pumpkin with butter sauce), a peppery beef stew called peposo, a few glasses of wine and a salted chocolate torte. It was the best meal we had in Italy. A perfect way to end our trip to Florence! We leave in the morning (at 5:00 AM) and will really miss it here. The whole experience was unforgettable!</p>
+<p><a data-lightbox="day-9" href="/images/italy/day9/IMG_1670.jpg" data-title="David is pretty big"><img src="/images/italy/day9/IMG_1670.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1671.jpg" data-title=""><img src="/images/italy/day9/IMG_1671.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1673.jpg" data-title="Hm, what's this..."><img src="/images/italy/day9/IMG_1673.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1674.jpg" data-title="WHAT IS THAT LITTLE MAN DOING??"><img src="/images/italy/day9/IMG_1674.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1675.jpg" data-title="A bakery"><img src="/images/italy/day9/IMG_1675.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1683.jpg" data-title="Butternut squash ravioli"><img src="/images/italy/day9/IMG_1683.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1684.jpg" data-title="Peposo"><img src="/images/italy/day9/IMG_1684.jpg" style="height:200px; border-radius:4px;margin:5px"/></a></p>
+</div>
+]]></description>
+    <pubDate>Wed, 28 Dec 2016 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2016-12-28-honeymoon.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
+    <title>Monoids in Theory and in Haskell</title>
+    <link>http://kovach.me/posts/2016-06-08-monoids.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<h2 id="overview">Overview</h2>
+<p>This is the second in a series of posts about category theory and its relationship with Haskell. We’ll be exploring monoids in this post!</p>
+<h2 id="the-monoid-intuitively">The monoid (intuitively)</h2>
+<p>A monoid is a mathematical object, just like a category, <a href="http://kovach.me/posts/2016-06-01-categories.html">which we explored in the last post</a>. Intuitively, a monoid is a structure which encodes the ability to concatenate two things, and a zero-like element which, when used in concatenation, does not affect the other element. Let’s look at a typical mathematical formulation of a monoid:</p>
+<p>A <strong>monoid</strong> is a set <span class="math inline"><em>M</em></span> equipped with a binary operation <span class="math inline">× : <em>m</em> → <em>m</em> → <em>m</em></span> and a special element <span class="math inline">1 ∈ <em>M</em></span> such that <span class="math inline">1</span> and <span class="math inline">×</span> satisfy the following laws:</p>
+<ul>
+<li>Associativity: <span class="math inline">(<em>x</em> × <em>y</em>)×<em>z</em> = <em>x</em> × (<em>y</em> × <em>z</em>)</span></li>
+<li>Left and right unit laws: <span class="math inline">1 × <em>x</em> = <em>x</em> = <em>x</em> × 1</span></li>
+</ul>
+<p>I wouldn’t be surprised at this point if, even without a heavy mathematical background, one could come up with an example of a monoid. Let’s look at a couple.</p>
+<p>The monoid <span class="math inline">{ℝ, ×, 1}</span> is an obvious example of a monoid; that is, our set <span class="math inline"><em>M</em></span> is the <strong>real numbers</strong>, our binary operation is <strong>multiplication</strong>, and our <span class="math inline">1</span> element is the number <strong>1</strong>.</p>
+<p>Another example of a monoid on numeric values is <span class="math inline">{ℤ, +, 0}</span>; the <strong>integers</strong> under <strong>addition</strong> with <span class="math inline">1</span> being <strong>0</strong>.</p>
+<p>In the programming world, monoids show up all over the place as well. A well-known monoid, using haskell syntax, is <code>{[a], (++), []}</code> – the monoid of <strong>lists</strong> under <strong>concatentation</strong> with <span class="math inline">1</span> being the <strong>empty list</strong>.</p>
+<h2 id="the-monoid-in-haskell">The monoid (in haskell)</h2>
+<p>As a haskell programmer, the aforementioned definition for a monoid looks awfully familiar. The typeclass for <code>Monoid</code> looks almost the exact same, sans axioms, and modulo names, as the traditional mathematical formulation:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">class</span> <span class="dt">Monoid</span> m <span class="kw">where</span>
+<span class="ot">  mempty ::</span> m <span class="co">-- Analogous to 1</span>
+<span class="ot">  mappend ::</span> m <span class="ot">-&gt;</span> m <span class="ot">-&gt;</span> m <span class="co">-- Analogous to our binary operation </span></code></pre></div>
+<p>We can even encode the three examples of monoids mentioned above in a very straightforward way:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">-- Let&#39;s pretend Floats are the reals </span>
+<span class="co">-- {R, *, 1}</span>
+<span class="kw">newtype</span> <span class="dt">Product</span> <span class="fu">=</span> <span class="dt">Product</span>{<span class="ot"> runProduct ::</span> <span class="dt">Float</span> }
+
+<span class="kw">instance</span> <span class="dt">Monoid</span> <span class="dt">Product</span> <span class="kw">where</span>
+  mempty <span class="fu">=</span> <span class="dt">Product</span> <span class="dv">1</span>
+  mappend (<span class="dt">Product</span> a) (<span class="dt">Product</span> b) <span class="fu">=</span> <span class="dt">Product</span> (a <span class="fu">*</span> b)
+
+<span class="co">-- {Z, +, 0}</span>
+<span class="kw">newtype</span> <span class="dt">Sum</span> <span class="fu">=</span> <span class="dt">Sum</span>{<span class="ot"> runSum ::</span> <span class="dt">Integer</span> }
+
+<span class="kw">instance</span> <span class="dt">Monoid</span> <span class="dt">Sum</span> <span class="kw">where</span>
+  mempty <span class="fu">=</span> <span class="dt">Sum</span> <span class="dv">0</span>
+  mappend (<span class="dt">Sum</span> a) (<span class="dt">Sum</span> b) <span class="fu">=</span> <span class="dt">Sum</span> (a <span class="fu">+</span> b)
+
+<span class="co">-- This one is defined in the Prelude</span>
+<span class="co">-- {[a], ++, []}</span>
+<span class="kw">instance</span> <span class="dt">Monoid</span> [a] <span class="kw">where</span>
+  mempty <span class="fu">=</span> []
+  mappend xs ys <span class="fu">=</span> xs <span class="fu">++</span> ys</code></pre></div>
+<p>We have to verify that our instances follow the laws, which translated to haskell look like this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">-- Associativity</span>
+(a <span class="ot">`mappend`</span> b) <span class="ot">`mappend`</span> c <span class="fu">==</span> a <span class="ot">`mappend`</span> (b <span class="ot">`mappend`</span> c)
+
+<span class="co">-- Left/right unit laws</span>
+mempty <span class="ot">`mappend`</span> a <span class="fu">==</span> a <span class="fu">==</span> a <span class="ot">`mappend`</span> mempty</code></pre></div>
+<p>It is not so hard to reason through these laws for the instances listed above.</p>
+<h2 id="the-monoid-in-category-theory">The monoid (in category theory)</h2>
+<p>We’re not done quite yet, because category theorists have picked up on a quaint definition of a monoid:</p>
+<blockquote>
+<p>A <strong>monoid</strong> is a category with one object.</p>
+</blockquote>
+<blockquote>
+<p>~ <a href="http://www.springer.com/us/book/9780387984032">Mac Lane, 1978</a></p>
+</blockquote>
+<p>Well, that’s convenient. But what is really going on here? Let’s look at a visual representation of the category theory interpretation of <span class="math inline">{ℤ, +, 0}</span> that we saw before*:</p>
+<p><img src="/images/monoid.png" style="width:350px" class="center-block"></p>
+<p><small>* The image gets a little messy with the negatives, but those are valid arrows as well.</small></p>
+<p>Morphisms in our category are elements of <span class="math inline">ℤ</span>. This can be confusing if we have some expectation about the way arrows should look. But, recall that to define a morphism, we only need to be able to assign a source and target to them, which are totally abstract concepts. Our set of morphisms is then exactly <span class="math inline">ℤ</span>, where we just pick the same source and target for every single element.</p>
+<p><span class="math inline"><em>i</em><em>d</em></span> is the arrow labeled <span class="math inline">0</span>:</p>
+<p><img src="/images/morphisms_0.png" style="width:350px" class="center-block"></p>
+<p>Here are two more arrows:</p>
+<p><img src="/images/morphisms_1.png" style="width:350px" class="center-block"></p>
+<p>Composing these arrows gives us something that looks like this, intuitively:</p>
+<p><img src="/images/morphisms_2.png" style="width:350px" class="center-block"></p>
+<p>Composition is addition, so this is equivalent to:</p>
+<p><img src="/images/morphisms_3.png" style="width:350px" class="center-block"></p>
+<p>An important thing to note here is that <strong>the object doesn’t really matter</strong>. The above diagrams should make sense regardless of what the source and target of the arrows are, as long as they’re the same thing. The source and target <strong>must</strong> be the same so we can compose freely. If they weren’t, we wouldn’t be guaranteed to “have access” to the start of any arrow in our monoid at the end of any other arrow, which would disallow composition. This means we necessarily only have a single object in our category.</p>
+<p>So long as we have a monoid by the classical definition, we have a monoid by the category theoretical definition. The conceptual mapping of formulations (from classical to category theoretical) is:</p>
+<ul>
+<li><span class="math inline">× → ∘</span></li>
+<li><span class="math inline">1 → <em>i</em><em>d</em></span></li>
+</ul>
+<p>The tricky thing here is that in category-theory-land, the morphisms might not really look like functions, or even arrows, as we might expect. An integer as a category morphism follows the laws if we plug in the right <span class="math inline"><em>i</em><em>d</em></span> and <span class="math inline">∘</span>, and that’s all that matters.</p>
+<h2 id="the-connection">The connection</h2>
+<p>Let’s formulate the aforementioned <code>Sum</code> as a legitimate haskell <code>Category</code> (<code>C</code> for <code>Category</code>):</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">SumC</span> a b <span class="kw">where</span>
+  <span class="dt">SumC</span><span class="ot"> ::</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">SumC</span> a a
+
+<span class="kw">deriving</span> <span class="kw">instance</span> <span class="dt">Show</span> (<span class="dt">SumC</span> a b)
+
+<span class="kw">instance</span> <span class="dt">Category</span> <span class="dt">SumC</span> <span class="kw">where</span>
+  id <span class="fu">=</span> <span class="dt">SumC</span> <span class="dv">0</span>
+  <span class="dt">SumC</span> x <span class="fu">.</span> <span class="dt">SumC</span> y <span class="fu">=</span> <span class="dt">SumC</span> (x <span class="fu">+</span> y)</code></pre></div>
+<p>We can use GADTs to encode the monoid (read: category with a single object) of integers under addition. We are saying two things here:</p>
+<ul>
+<li>A <code>SumC</code> is constructed by an <code>Integer</code> (effectively, this means that a <code>SumC</code> <em>is</em> an <code>Integer</code>; this is just a wrapper).</li>
+<li>Although we’re providing two type variables to <code>SumC</code>, we can only construct things of type <code>SumC a a</code>.</li>
+</ul>
+<p>In effect, if we view <code>SumC</code> as <code>cat</code> (the type of morphisms in a category), we can encode the monoid <span class="math inline">{ℤ, +, 0}</span> exactly as a <code>Category</code>. If you look closely, you’ll notice that we only have a single object in our category, and we don’t care what it is. This is exactly <code>a</code>. A <code>SumC</code> can only be constructed in one way, namely, by asserting that its source and target is <code>a</code>. The identity arrow is <code>0</code>, which we’d expect, and composing two arrows is adding their <code>Integer</code> values.</p>
+<p>The category laws all hold, which you may check. This instance acts exactly like the builtin <code>Monoid</code> instance for the <code>Sum</code> we saw previously, modulo operator/function names*:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="fu">*</span><span class="dt">Main</span><span class="fu">&gt;</span> <span class="dt">SumC</span> <span class="dv">8</span> <span class="fu">.</span> id
+<span class="dt">SumC</span> <span class="dv">8</span>
+<span class="fu">*</span><span class="dt">Main</span><span class="fu">&gt;</span> id <span class="fu">.</span> <span class="dt">SumC</span> <span class="dv">8</span>
+<span class="dt">SumC</span> <span class="dv">8</span>
+<span class="fu">*</span><span class="dt">Main</span><span class="fu">&gt;</span> <span class="dt">SumC</span> <span class="dv">17</span> <span class="fu">.</span> <span class="dt">SumC</span> <span class="dv">90</span>
+<span class="dt">SumC</span> <span class="dv">107</span></code></pre></div>
+<p><small> * s/id/mempty, s/./+, s/SumC/Sum and you’ve got the original form. </small></p>
+<p>Just like with a <code>Category</code>, this isn’t the only <code>Monoid</code> you can encode – you should be able to use this type of construction for any haskell <code>Monoid</code>.</p>
+<p>Note that I wouldn’t actually recommend doing this in practice; it’s mainly a mental exercise. That said, I think it’s pretty cool that we can get very close to a category-theoretic formulation of what a monoid is in Haskell!</p>
+</div>
+]]></description>
+    <pubDate>Wed, 08 Jun 2016 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2016-06-08-monoids.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
+    <title>Categories in Theory and in Haskell</title>
+    <link>http://kovach.me/posts/2016-06-01-categories.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<h2 id="overview">Overview</h2>
+<p>This is the first post in a series that I hope to expand over time regarding notions in category theory and how they manifest in the haskell programming language.</p>
+<p>Category theory is extremely general; its language is useful in recognizing structure and unifying mathematical concepts that don’t seem related at first glance. It’s a wonderful tool for gaining intuition about wildly different things in one fell swoop, which makes it a lot of fun to explore.</p>
+<p>On the other hand, haskell is an increasingly-widely-used, purely functional programming language with some obvious roots in category theory. A lot of the bizarre-sounding words haskellers use on a daily basis are derived from category theory (or other branches of mathematics that category theory generalizes). However, mapping from category theory to haskell is sometimes nontrivial, and it can be hard to see the connection.</p>
+<p>I think that learning haskell should be a tool for understanding category theory and vice versa. This post, and possibly other future posts, will hopefully shed some light on the explicit translations between category theory language and haskell. This is not necessarily intended to be an introduction to category theory or haskell, and I don’t want to be too pedantic about definitions. however, I hope to incite an intuitive understanding about the basics of category theory and its translation to haskell.</p>
+<h2 id="the-category-intuitively">The category (intuitively)</h2>
+<p>A category is a type of mathematical object. For the uninitiated, one of the simplest examples of a mathematical object is the set; a collection of “things” that doesn’t contain duplicates. Examples are:</p>
+<ul>
+<li>The set of natural numbers <span class="math inline">{0..∞}</span></li>
+<li>The set of all humans living in Europe</li>
+<li>The set of all board games designed in the 1980s</li>
+</ul>
+<p>Sets have a very general structure, so many traditional mathematical objects add structure <em>on top of</em> sets in order to find more interesting insights.</p>
+<p>A category* is one of these objects. Intuitively, a category is a structure containing a bunch of “things” along with a way to move between those things.</p>
+<p><small> * Technically, <em>small</em> category. </small></p>
+<h2 id="the-category-in-theory">The category (in theory)</h2>
+<p>The (semi)formal* definition of a category is as follows:</p>
+<p>A category C consists of two things:</p>
+<ul>
+<li>A collection <span class="math inline"><em>C</em><sub>0</sub></span> of <em>objects</em>.</li>
+<li>A collection <span class="math inline"><em>C</em><sub>1</sub></span> of <em>morphisms</em>, with a <em>source</em> and <em>target</em> in <span class="math inline"><em>C</em><sub>0</sub></span>. We’ll consider an element of this set to look like <code>f : a -&gt; b</code>, where <code>a</code> is called the <em>source</em> of the morphism, and <code>b</code> is called its <em>target</em>.</li>
+<li>A special morphism in <span class="math inline"><em>i</em><em>d</em> : <em>C</em><sub>0</sub> → <em>C</em><sub>1</sub></span>, which assigns to each object <span class="math inline"><em>x</em> ∈ <em>C</em><sub>0</sub></span> a morphism <span class="math inline"><em>i</em><em>d</em><sub><em>x</em></sub></span> following the unit laws listed below.</li>
+<li>A composition operator <span class="math inline">∘</span>, which assigns, to any pair of morphisms <code>f : a   -&gt; b</code> and <code>g : b -&gt; c</code>, a composite morphism <span class="math inline"><em>g</em> ∘ <em>f</em></span> <code>: a -&gt; c</code> (Note that the source of <code>g</code> is the target of <code>f</code>).</li>
+</ul>
+<p>The following are also necessarily true of a category:</p>
+<ul>
+<li>Composition is associative: <span class="math inline">(<em>h</em> ∘ <em>g</em>)∘<em>f</em> = <em>h</em> ∘ (<em>g</em> ∘ <em>f</em>)</span> for <code>f :   c -&gt; d, g : b -&gt; c, h : a -&gt; b</code> in <span class="math inline"><em>C</em><sub>0</sub></span>.</li>
+<li>Composition satisfies the left and right unit laws: <span class="math inline"><em>i</em><em>d</em><sub><em>y</em></sub> ∘ <em>f</em> = <em>f</em> = <em>f</em> ∘ <em>i</em><em>d</em><sub><em>x</em></sub></span> for all morphisms <span class="math inline"><em>s</em></span> in <span class="math inline"><em>C</em><sub>0</sub></span>.</li>
+</ul>
+<p>Intuitively, <span class="math inline"><em>i</em><em>d</em></span> maps each object back to itself. However, when the structure of a category’s morphisms doesn’t look like a pure function, this definition is not exact. Neither the structure of objects, nor the structure of morphisms, is static across all categories. Hence we cannot say exactly what <span class="math inline"><em>i</em><em>d</em></span> or <span class="math inline">∘</span> <em>does</em>; we can only say how they should behave when they appear in a mathematical expression using a certain category.</p>
+<p><small> * Slightly handwavy, but formal enough to get the point across for our purposes! For two <em>full</em> definitions, see <a href="https://ncatlab.org/nlab/show/category#definitions">nlab’s page on categories</a>. </small></p>
+<p>Here’s an example:</p>
+<p><strong>Set</strong> is the category consisting of Sets as objects and functions between those sets as morphisms. Two objects in this category are the set of Natural numbers <span class="math inline">ℕ</span> and the set of Boolean values <span class="math inline"><em>B</em><em>o</em><em>o</em><em>l</em> = {<em>T</em><em>r</em><em>u</em><em>e</em>, <em>F</em><em>a</em><em>l</em><em>s</em><em>e</em>}</span>. The function <span class="math inline"><em>o</em><em>d</em><em>d</em> : ℕ → <em>B</em><em>o</em><em>o</em><em>l</em></span> which takes each natural number to its truth value of whether it is odd or not is a morphism in this category.</p>
+<p>Some other examples of categories are:</p>
+<ul>
+<li>The <strong>free category</strong> generated by a directed graph, with nodes as objects and arrows between nodes as morphisms.</li>
+<li><strong>Hask</strong>, the category of haskell types and functions, which we will discuss next.</li>
+<li><strong>Grp</strong>, the category with groups as objects and group homomorphisms as arrows.*</li>
+</ul>
+<p><small> * It’s hard to find examples that aren’t deeply entrenched in mathematics; sorry! </small></p>
+<h2 id="hask">Hask</h2>
+<p>Before we talk about encoding categories in Haskell, I’d like to briefly talk about Haskell’s very own category, <strong>Hask</strong>.</p>
+<p><strong>Hask</strong> is the category in which:</p>
+<ul>
+<li>Members of Haskell’s types are objects</li>
+<li>Regular Haskell functions (<code>a -&gt; b</code>) are morphisms.</li>
+</ul>
+<p><code>id :: a -&gt; a</code> is the <span class="math inline"><em>i</em><em>d</em></span> morphism, and regular function composition with <code>(.) :: (b -&gt; c) -&gt; (a -&gt; b) -&gt; (a -&gt; c)</code> is morphism composition in <strong>Hask</strong>.</p>
+<p><strong>Hask</strong> is a legitimate category, but we have to be specific about what <code>undefined</code> means. More on that <a href="https://wiki.haskell.org/Hask">on haskell wiki</a>. Note that <strong>Hask</strong> is a category whether or not we’re speaking about it internally or externally; mentions of <strong>Hask</strong> are not required to appear in the context of haskell, which is interesting!</p>
+<h2 id="the-category-in-haskell">The category (in haskell)</h2>
+<p>In haskell, we typically use typeclasses to encode common functionality between various structures, which is exactly what we will do to encode category-theoretical categories. Here is the typeclass definition for <code>Category</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">class</span> <span class="dt">Category</span> cat <span class="kw">where</span>
+  id <span class="fu">:</span> cat a a
+  (<span class="fu">.</span>) <span class="fu">:</span> cat b c <span class="ot">-&gt;</span> cat a b <span class="ot">-&gt;</span> cat a c </code></pre></div>
+<p>We’ll talk more about this in a minute. First, let’s look at the most straight-forward example of a <code>Category</code>, the instance for <code>(-&gt;)</code> (Turn on the <code>InstanceSigs</code> GHC extension to get this to compile):</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Category</span> (<span class="ot">-&gt;</span>) <span class="kw">where</span>
+<span class="ot">  id ::</span> a <span class="ot">-&gt;</span> a <span class="co">-- or (-&gt;) a a</span>
+  id x <span class="fu">=</span> x
+
+<span class="ot">  (.) ::</span> (b <span class="ot">-&gt;</span> c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> c)
+      <span class="co">-- or ((-&gt;) b c) -&gt; ((-&gt;) a b) -&gt; ((-&gt;) a c)</span>
+  (f <span class="fu">.</span> g) x <span class="fu">=</span> f (g x) </code></pre></div>
+<p>This instance represents <strong>Hask</strong>. Another common <code>Category</code> instance we commonly encounter as haskell programmers is the one for <code>Kleisli</code> arrows, which we see quite a bit when writing monadic code:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">newtype</span> <span class="dt">Kleisli</span> m a b <span class="fu">=</span> <span class="dt">Kleisli</span> {<span class="ot"> runKleisli ::</span> a <span class="ot">-&gt;</span> m b }
+
+<span class="kw">instance</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> <span class="dt">Category</span> (<span class="dt">Kleisli</span> m) <span class="kw">where</span>
+<span class="ot">  id ::</span> <span class="dt">Kleisli</span> m a a 
+  id <span class="fu">=</span> <span class="dt">Kleisli</span> return
+
+<span class="ot">  (.) ::</span> <span class="dt">Kleisli</span> m b c <span class="ot">-&gt;</span> <span class="dt">Kleisli</span> m a b <span class="ot">-&gt;</span> <span class="dt">Kleisli</span> m a c
+  (<span class="dt">Kleisli</span> f) <span class="fu">.</span> (<span class="dt">Kleisli</span> g) <span class="fu">=</span> <span class="dt">Kleisli</span> <span class="fu">$</span> \x <span class="ot">-&gt;</span> (f <span class="fu">&lt;=&lt;</span> g) x</code></pre></div>
+<p>Recall that:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">return<span class="ot"> ::</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> m a 
+<span class="co">-- The Kleisli fish operator &lt;=&lt; comes from Control.Monad.</span>
+<span class="ot">(&lt;=&lt;) ::</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> (b <span class="ot">-&gt;</span> m c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> m b) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> m c)</code></pre></div>
+<p>and it might be easier to see where that instance comes from. We won’t prove that these two instances follow the category laws here; the important thing for our purposes is that these instances follow the pattern. Proving that this instance follows the category laws through equational reasoning is a nice exercise, though.</p>
+<p>At this point, it may feel like there are some holes. In the mathematical interpretation, we construct categories by explicitly providing both objects of a category and its morphisms. It’s not totally obvious where those come up when representing categories in haskell. So, where’s the connection?</p>
+<h2 id="the-connection">The connection</h2>
+<p>Objects of a <code>Category</code> in haskell are types. The typeclass variable <code>cat</code> describes the type (see aside below) of morphisms in our category. Specifically, the sources and targets of our morphisms are hidden in the type declaration for the morphisms we’re declaring a category instance for. In <code>(-&gt;)</code>, the source and target can be any haskell data type. For a morphism in <code>Kleisli</code>, however, the <em>source</em> can be any haskell data type, but the <em>target</em> of our morphisms must be something with the structure <code>m a</code> for some <code>m</code>. This lets us describe in some sense the structure of a morphism in the category, though it does not give us all laws for free (Try encoding <strong>Grp</strong>, for instance).</p>
+<p>In typeclass instances for <code>Category</code>, we develop the laws stating that we must have identity and composition operators that respect the structure of our objects and categories. Haskell’s typechecker helps us confirm that some of the category laws hold by construction. If we can’t find something of type <code>cat a a</code>, we don’t have an <span class="math inline"><em>i</em><em>d</em></span>. If we can’t find a typechecking instance for <code>(.)</code>, we can’t ensure that sources and targets match up when composing morphisms. This may not always give us law-abiding instances for free, but we can certainly be guided by the typechecker.</p>
+<hr />
+<h3 id="aside-types">Aside: types</h3>
+<p>Types are themselves a kind of mathematical structure in the same vein as sets. The main difference is that types are <em>constrained</em> to a certain subset of values; with (mathematical) sets, anything goes. Haskell’s type definitions define a subset of <em>values</em> that are valid inhabitants (members) of a type. The type itself can be viewed in some sense as the set of all of its inhabitants. When we say a value <span class="math inline"><em>v</em></span> has type <span class="math inline"><em>τ</em></span>, with this definition we are saying that <span class="math inline"><em>v</em> ∈ <em>τ</em></span>.</p>
+<hr />
+<p>(These are not the only categories we can encode in Haskell; they are just two common examples.)</p>
+<h2 id="takeaway">Takeaway</h2>
+<p>It is possible to encode a category in haskell, but it doesn’t look exactly the same as laying out its definition on paper in a mathematical setting. In particular:</p>
+<ul>
+<li>A category <span class="math inline"><em>C</em></span> is defined in haskell by providing the type (structure) of morphisms in <span class="math inline"><em>C</em></span>, instead of explicitly stating its objects and morphisms.</li>
+<li>Objects of all categories defined in haskell are types expressible by the haskell type system. In the whole world of mathematics, objects can be much broader.</li>
+<li>Typechecking implementations of <span class="math inline"><em>i</em><em>d</em></span> and <span class="math inline">∘</span> must be provided for all <code>Category</code> instances, which guides us towards law-abiding implementations.</li>
+</ul>
+</div>
+]]></description>
+    <pubDate>Wed, 01 Jun 2016 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2016-06-01-categories.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
+    <title>Posting to Twitter via HTTP in haskell</title>
+    <link>http://kovach.me/posts/2014-08-09-twitter.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<p>When working on <a href="https://twitter.com/_rapcandy">rapcandy</a>, I had a bit of trouble getting the twitter connector bit working. I’ll detail here what worked – if you need to connect to Twitter via one of your Haskell applications, this should help you out.</p>
+<h3 id="setting-up-a-twitter-application">Setting up a Twitter Application</h3>
+<p>In order to interact with Twitter programmatically, you’ll first need to set up an application via <a href="http://dev.twitter.com">dev.twitter.com</a>. You can create a new app here and generate new API keys for it. Once you do this, you’ll be able to <em>read</em> from twitter. If you want to write to twitter (like I did, with <a href="https://twitter.com/_rapcandy">@_rapcandy</a>), you can go to the <em>API Keys</em> tab, click “modify app permissions” and give it write access. You can then generate new API keys which will permit writing.</p>
+<p>Copy down your API key, API secret, Access token, and Access token secret into a JSON file called <code>config.json</code> that looks like this:</p>
+<div class="sourceCode"><pre class="sourceCode json"><code class="sourceCode json"><span class="fu">{</span>
+    <span class="dt">&quot;apiKey&quot;</span><span class="fu">:</span> <span class="st">&quot;&lt;api key&gt;&quot;</span><span class="fu">,</span>
+    <span class="dt">&quot;apiSecret&quot;</span><span class="fu">:</span> <span class="st">&quot;&lt;api secret&gt;&quot;</span><span class="fu">,</span>
+    <span class="dt">&quot;userKey&quot;</span><span class="fu">:</span> <span class="st">&quot;&lt;user key&gt;&quot;</span><span class="fu">,</span>
+    <span class="dt">&quot;userSecret&quot;</span><span class="fu">:</span> <span class="st">&quot;&lt;user secret&gt;&quot;</span>
+<span class="fu">}</span></code></pre></div>
+<p>Now everything’s in place to be able to start interacting with Twitter via Haskell.</p>
+<h3 id="posting-to-twitter">Posting to Twitter</h3>
+<p>We’ll be using <code>aeson</code>, <code>HTTP</code>, and <code>authenticate-oauth</code> (Twitter uses OAuth to authenticate its users) to handle the transaction. A bit of boilerplate:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">{-# LANGUAGE DeriveGeneric             #-}</span>
+<span class="ot">{-# LANGUAGE NoMonomorphismRestriction #-}</span>
+<span class="ot">{-# LANGUAGE OverloadedStrings         #-}</span>
+<span class="ot">{-# LANGUAGE RecordWildCards           #-}</span>
+
+<span class="kw">import           </span><span class="dt">Control.Monad</span>
+<span class="kw">import           </span><span class="dt">Data.Aeson</span>
+<span class="kw">import           </span><span class="dt">GHC.Generics</span>
+<span class="kw">import           </span><span class="dt">Data.ByteString</span>
+<span class="kw">import qualified</span> <span class="dt">Data.ByteString.Char8</span>   <span class="kw">as</span> <span class="dt">B</span>
+<span class="kw">import qualified</span> <span class="dt">Data.ByteString.Lazy</span>    <span class="kw">as</span> <span class="dt">BL</span>
+<span class="kw">import qualified</span> <span class="dt">Network.HTTP.Base</span>       <span class="kw">as</span> <span class="dt">HTTP</span>
+<span class="kw">import           </span><span class="dt">Network.HTTP.Client</span>
+<span class="kw">import           </span><span class="dt">Network.HTTP.Client.TLS</span>
+<span class="kw">import           </span><span class="dt">Network.HTTP.Types</span>
+<span class="kw">import           </span><span class="dt">Web.Authenticate.OAuth</span></code></pre></div>
+<p>First thing’s first, we need to be able to pull in our config file in order to access the keys for our application. We “magically” do this using <code>Aeson</code>, deriving <code>Generic</code> and making automatic instances of <code>{To, From}JSON</code> for our user-defined <code>Config</code> type.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Config</span> <span class="fu">=</span> <span class="dt">Config</span> {
+<span class="ot">    apiKey       ::</span> <span class="dt">String</span>,
+<span class="ot">    apiSecret    ::</span> <span class="dt">String</span>,
+<span class="ot">    userKey      ::</span> <span class="dt">String</span>,
+<span class="ot">    userSecret   ::</span> <span class="dt">String</span>
+  } <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Generic</span>)
+
+<span class="kw">instance</span> <span class="dt">FromJSON</span> <span class="dt">Config</span>
+<span class="kw">instance</span> <span class="dt">ToJSON</span> <span class="dt">Config</span></code></pre></div>
+<p>We can pull in a <code>Config</code> from a file with a basic function <code>configFromFile</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">configFromFile ::</span> FilePath <span class="ot">-&gt;</span> <span class="dt">IO</span> (<span class="dt">Either</span> <span class="dt">String</span> <span class="dt">Config</span>)
+configFromFile path <span class="fu">=</span> <span class="kw">do</span>
+  contents <span class="ot">&lt;-</span> BL.readFile path
+  return <span class="fu">$</span> eitherDecode contents</code></pre></div>
+<p>Now calling <code>configFromFile &quot;config.json&quot;</code> should return something like <code>Right (Config{...})</code>. Now we can start authenticating requests to the Twitter API. The following function is adapted from the <a href="http://hackage.haskell.org/package/yesod-auth-0.7.2/docs/src/Yesod-Auth-OAuth.html">Yesod source code</a> to be less specific to Yesod:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">oauthTwitter ::</span> <span class="dt">ByteString</span> <span class="ot">-&gt;</span> <span class="dt">ByteString</span> <span class="ot">-&gt;</span> <span class="dt">OAuth</span>
+oauthTwitter key secret <span class="fu">=</span>
+  newOAuth { oauthServerName      <span class="fu">=</span> <span class="st">&quot;twitter&quot;</span>
+           , oauthRequestUri      <span class="fu">=</span> <span class="st">&quot;https://api.twitter.com/oauth/request_token&quot;</span>
+           , oauthAccessTokenUri  <span class="fu">=</span> <span class="st">&quot;https://api.twitter.com/oauth/access_token&quot;</span>
+           , oauthAuthorizeUri    <span class="fu">=</span> <span class="st">&quot;https://api.twitter.com/oauth/authorize&quot;</span>
+           , oauthSignatureMethod <span class="fu">=</span> <span class="dt">HMACSHA1</span>
+           , oauthConsumerKey     <span class="fu">=</span> key
+           , oauthConsumerSecret  <span class="fu">=</span> secret
+           , oauthVersion         <span class="fu">=</span> <span class="dt">OAuth10a</span>
+           }</code></pre></div>
+<p>Here we pass in our OAuth consumer key and secret to build an <code>OAuth</code>; these correspond to the Twitter API key/secret, and is one half of what we need to fully authenticate Twitter requests. The other half is a <code>Credential</code>, which we can build with <code>newCredential</code> using our <em>user</em> key and secret. We can fully sign an arbitrary request using a <code>Config</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">signWithConfig ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">Request</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> <span class="dt">Request</span>
+signWithConfig <span class="dt">Config</span>{<span class="fu">..</span>} <span class="fu">=</span> signOAuth
+  (oauthTwitter (B.pack apiKey) (B.pack apiSecret))
+  (newCredential (B.pack userKey) (B.pack userSecret))</code></pre></div>
+<p>Now all we have to do is actually <em>send</em> a request (post a status!), which is simple but took me a while to finagle into place. There are three things to keep in mind here:</p>
+<ol style="list-style-type: decimal">
+<li>We must <code>urlEncode</code> the status we want to send.</li>
+<li>We must <code>POST</code>; not <code>GET</code>.</li>
+<li>We must use <code>tlsManagerSettings</code> to enable TLS for our request (otherwise, the request won’t go through)</li>
+</ol>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">tweet ::</span> <span class="dt">Config</span> <span class="ot">-&gt;</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">IO</span> (<span class="dt">Response</span> <span class="dt">BL.ByteString</span>)
+tweet config status <span class="fu">=</span> <span class="kw">do</span>
+  url <span class="ot">&lt;-</span> parseUrl <span class="fu">$</span> <span class="st">&quot;https://api.twitter.com/1.1/statuses/update.json?status=&quot;</span> <span class="fu">++</span> HTTP.urlEncode status
+  req <span class="ot">&lt;-</span> signWithConfig config url{ method <span class="fu">=</span> <span class="st">&quot;POST&quot;</span> }
+  manager <span class="ot">&lt;-</span> newManager tlsManagerSettings
+  httpLbs req manager</code></pre></div>
+<p>Using this code and a sufficiently permissive Twitter application, you should be able to adapt this code to send requests to any of the <a href="https://dev.twitter.com/docs/api/1.1">Twitter REST API endpoints</a> from Haskell.</p>
+<p>Ben</p>
+</div>
+]]></description>
+    <pubDate>Sat, 09 Aug 2014 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2014-08-09-twitter.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
+    <title>Modeling and Simulating Markov Chain Evolution</title>
+    <link>http://kovach.me/posts/2014-08-04-markov-chains.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<p>In this post, I will describe and implement a small interface for modeling Markov chains and simulating their evolution in Haskell.</p>
+<h3 id="what-is-a-markov-chain">What is a Markov Chain?</h3>
+<p>
+<p><small width="200px" style="float:right; text-align:center"><a href="http://commons.wikimedia.org/wiki/File:Markovkate_01.svg#mediaviewer/File:Markovkate_01.svg"><img width="260px" src="http://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Markovkate_01.svg/1200px-Markovkate_01.svg.png" alt="Markovkate 01.svg"></a><br>A simple two-state Markov chain.<br>image by <a href="//commons.wikimedia.org/wiki/User:Joxemai4" title="User:Joxemai4">Joxemai4</a>.</small></p>
+A <a href="http://en.wikipedia.org/wiki/Markov_chain">discrete-time Markov chain (DTMC)</a> is a mathematical system that probabalistically transitions between states using only its current state. A Markov chain can be thought of as a directed graph with probabilities for edges and states for vertices. The Markov chain on the right has two states, <code>E</code> and <code>A</code>. The diagram states that a Markov chain in state <code>E</code> will transition back to state <code>E</code> with probability <code>0.3</code>, and to state <code>A</code> with probability <code>0.7</code>, and similarly for <code>A</code>’s transitions. They can be used for a wide variety of applications in statistical modeling.
+</p>
+<p>They can also be used to generate sentences similar to arbitrary blocks of text. We will explore this application towards the end of the post.</p>
+<h3 id="aside-weighted-random-generation">Aside: Weighted Random Generation</h3>
+<p>The first thing that comes to mind when I think of random generation is still <a href="http://learnyouahaskell.com/for-a-few-monads-more#making-monads">the <code>Prob</code> data type described in LYAH</a>. <a href="https://hackage.haskell.org/package/MonadRandom-0.1.13/docs/Control-Monad-Random.html">The <code>MonadRandom</code> library</a> defines a data type <a href="https://hackage.haskell.org/package/MonadRandom-0.1.13/docs/Control-Monad-Random.html#t:Rand"><code>Rand</code></a> which works, in many ways, in the same way as the <code>Prob</code> data type does (with a bit of extension to produce a transormer, etc.). I won’t go into the full details of how this works, but the basic ideas is that, given a list of outcomes with weights, e.g.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">[(<span class="st">&quot;Heads&quot;</span>, <span class="dv">1</span>), (<span class="st">&quot;Tails&quot;</span>, <span class="dv">1</span>)]</code></pre></div>
+<p>we can – by wrapping it in <code>Rand</code> and giving it a random generator – produce a weighted random outcome, “Heads” or “Tails” with the desired weighting. For a concrete example, here’s a functional program written using the <code>MonadRandom</code> library.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad.Random</span>
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> newStdGen <span class="fu">&gt;&gt;=</span> print <span class="fu">.</span> evalRand coinFlip
+  <span class="kw">where</span> coinFlip <span class="fu">=</span> uniform [<span class="st">&quot;Heads&quot;</span>, <span class="st">&quot;Tails&quot;</span>]</code></pre></div>
+<p><code>uniform</code> constructs a <code>Rand</code> from a list with a uniform distribution, i.e. with each member having the same weight. <code>evalRand</code> takes a <code>Rand</code> and a random generator (we’re using <code>StdGen</code> here with <code>newStdGen</code>) and spits out a weighted random object. Running this will print “Heads” about 50% of the time and “Tails” about 50% of the time.</p>
+<p>Also of note is the <code>fromList</code> combinator, which takes a list of objects and their weights and constructs a <code>Rand</code> object. For example, replacing <code>coinFlip</code> with <code>fromList [(&quot;Heads&quot;, 1), (&quot;Tails&quot;, 1)]</code> yields the same program as above.</p>
+<h3 id="markov-chains-an-intermediate-representation">Markov Chains: An Intermediate Representation</h3>
+<p>In order to model Markov chains, we essentially want to build a graph with weighted edges. We can model edge-weighted graphs using a <code>HashMap</code> from vertices to lists of edges, represented as <code>(vertex, weight)</code> pairs (the vertex the edge points to and its weight).</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Data.HashMap.Lazy</span> <span class="kw">as</span> <span class="dt">M</span>
+<span class="kw">import           </span><span class="dt">Data.Ratio</span>
+
+<span class="kw">type</span> <span class="dt">MarkovI</span> a <span class="fu">=</span> <span class="dt">M.HashMap</span> a (<span class="dt">Maybe</span> [(a, <span class="dt">Rational</span>)])</code></pre></div>
+<p>The <code>MarkovI</code> (<code>I</code> for “intermediate”) data type is a synonym for a lazy <code>HashMap</code> from <code>a</code> to a list of vertex-edge pairs. The only difference here is that we allow the list to be empty by using <code>Maybe</code>, which signifies an “end” state in the chain with no outgoing transitions. We could remove this wrapper and use an empty list to signify the same thing, but this representation works better with <code>MonadRandom</code>, since <code>Rand</code>s can’t be empty, making the translation straightforward.</p>
+<p>You might also be wondering why we need an intermediate representation for Markov chains in the first place. The reason for this is that we can’t arbitrarily insert extra objects/weights into <code>Rand</code>s, and we’ll want to build up the mappings piecemeal. We need some intermediate structure to handle this functionality.</p>
+<p>We can define functions to build up <code>MarkovI</code>s via insertion of objects:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">insertMkvI ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">Rational</span> <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a
+insertMkvI r k v mkv <span class="fu">=</span> M.insert k (<span class="dt">Just</span> <span class="fu">$</span> <span class="kw">case</span> M.lookup k mkv <span class="kw">of</span>
+  <span class="dt">Nothing</span> <span class="ot">-&gt;</span> [(v, r)]
+  <span class="dt">Just</span> xs <span class="ot">-&gt;</span> <span class="kw">case</span> xs <span class="kw">of</span>
+    <span class="dt">Nothing</span> <span class="ot">-&gt;</span> [(v, r)]
+    <span class="dt">Just</span> ys <span class="ot">-&gt;</span> (v, r)<span class="fu">:</span>ys) mkv
+
+<span class="ot">insertEnd ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a
+insertEnd k <span class="fu">=</span> M.insert k <span class="dt">Nothing</span></code></pre></div>
+<p><code>insertMkvI</code> inserts an edge into a <code>MarkovI</code>. Its first argument is the weight for the edge being inserted. Its next two arguments are the state objects to add a transition from/to, respectively, and the fourth is the <code>MarkovI</code> to insert into. <code>insertEnd</code> inserts a state with no outbound transitions into a Markov chain.</p>
+<p>It is worth noting that the <code>Rand</code> object constructed from lists like this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">[(<span class="dt">True</span>, <span class="dv">1</span>), (<span class="dt">True</span>, <span class="dv">1</span>), (<span class="dt">False</span>, <span class="dv">1</span>)]</code></pre></div>
+<p><em>do</em> weight <code>True</code> twice as heavily as <code>False</code>. This will become important later, when talking about a sentence generator.</p>
+<h3 id="markov-chains-final-representation">Markov Chains: Final Representation</h3>
+<p>The final representation of Markov chains simply turns those <code>[(a, Rational)]</code>s in <code>MarkovI</code> into true <code>Rand</code>s.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Control.Monad.Random</span> <span class="kw">as</span> <span class="dt">R</span>
+
+<span class="kw">newtype</span> <span class="dt">Markov</span> g a <span class="fu">=</span> <span class="dt">Markov</span>{<span class="ot"> getMarkov ::</span> <span class="dt">M.HashMap</span> a (<span class="dt">Maybe</span> (<span class="dt">R.Rand</span> g a)) }</code></pre></div>
+<p>We can define a simple conversion function to construct <code>Markov</code>s from the intermediate representation by converting their distribution lists to <code>Rand</code>s via <code>fromList</code>. This is straightforward because empty lists are represented as <code>Nothing</code>, so we don’t have to explicitly deal with that edge case when calling <code>R.fromList</code>, which would normally fail in such a case.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromMarkovI ::</span> <span class="dt">RandomGen</span> g <span class="ot">=&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> <span class="dt">Markov</span> g a
+fromMarkovI <span class="fu">=</span> <span class="dt">Markov</span> <span class="fu">.</span> M.map (R.fromList <span class="fu">&lt;$&gt;</span>)</code></pre></div>
+<p>The first goal is to be able to – given a state and a random generator – transition to a new state probabalistically. The second goal is to be able to repeat this <code>n</code> times and track the states we pass through.</p>
+<p><code>runMarkov1</code> accomplishes the first goal:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Err</span> <span class="fu">=</span> <span class="dt">String</span>
+<span class="kw">data</span> <span class="dt">Outcome</span> g a <span class="fu">=</span>
+    <span class="dt">Error</span> <span class="dt">Err</span>
+  <span class="fu">|</span> <span class="dt">Val</span> a g
+  <span class="fu">|</span> <span class="dt">End</span>
+    <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)
+
+<span class="ot">runMarkov1 ::</span> (<span class="dt">R.RandomGen</span> g, <span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">Markov</span> g a <span class="ot">-&gt;</span> g <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">Outcome</span> g a
+runMarkov1 mkv gen x <span class="fu">=</span> <span class="kw">case</span> M.lookup x (getMarkov mkv) <span class="kw">of</span>
+  <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="dt">Error</span> <span class="st">&quot;Internal error; cannot find value&quot;</span>
+  <span class="dt">Just</span> rs <span class="ot">-&gt;</span> <span class="kw">case</span> flip R.runRand gen <span class="fu">&lt;$&gt;</span> rs <span class="kw">of</span>
+    <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="dt">End</span>
+    <span class="dt">Just</span> (a, g) <span class="ot">-&gt;</span> <span class="dt">Val</span> a g</code></pre></div>
+<p>First, if the state we’re looking for doesn’t exist, it is impossible to transition out of it, so the computation fails with an internal error. If not, we get a probablistic value out of the transition mappings from the state in question. If there aren’t any, we just <code>End</code> – we cannot transition, but don’t really want to throw an error. If there are values to choose from, we return one along with a new random generator, wrapped in <code>Val</code>.</p>
+<p>Extending this to run <code>n</code> times isn’t too tough. It mostly consists of finagling data types into the representation we want.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">runMarkov ::</span> (<span class="dt">R.RandomGen</span> g, <span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">Markov</span> g a <span class="ot">-&gt;</span> g <span class="ot">-&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">Err</span> [a]
+runMarkov n mkv gen x <span class="fu">=</span> go n
+  <span class="kw">where</span>
+    go m <span class="fu">|</span> m <span class="fu">&lt;=</span> <span class="dv">0</span> <span class="fu">=</span> <span class="dt">Right</span> []
+         <span class="fu">|</span> otherwise <span class="fu">=</span> (x<span class="fu">:</span>) <span class="fu">&lt;$&gt;</span> <span class="kw">case</span> runMarkov1 mkv gen x <span class="kw">of</span>
+            <span class="dt">Val</span> a g <span class="ot">-&gt;</span> runMarkov (n<span class="fu">-</span><span class="dv">1</span>) mkv g a
+            <span class="dt">End</span> <span class="ot">-&gt;</span> <span class="dt">Right</span> []
+            <span class="dt">Error</span> err <span class="ot">-&gt;</span> <span class="dt">Left</span> err</code></pre></div>
+<p>If we hit an <code>End</code>, the simulation terminates because it can’t progress any further. If we get an error along the way, we wrap it in <code>Left</code> and return it. Otherwise, we run <code>runMarkov1</code> repeatedly <code>n</code> times, starting from the previously computed state each time, and collecting the results into a list. If no errors occur, the result will be a list of states passed through while the simulation runs.</p>
+<p>We can now define a <code>fromList</code> function, which builds up a Markov chain from mappings represented in list form.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromList ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a, <span class="dt">R.RandomGen</span> g) <span class="ot">=&gt;</span> [(a, [(a, <span class="dt">Rational</span>)])] <span class="ot">-&gt;</span> <span class="dt">Markov</span> g a
+fromList <span class="fu">=</span> <span class="dt">Markov</span> <span class="fu">.</span> foldl&#39; (flip <span class="fu">$</span> uncurry ins) M.empty
+  <span class="kw">where</span> ins a b m <span class="fu">=</span> <span class="kw">case</span> b <span class="kw">of</span>
+          [] <span class="ot">-&gt;</span> M.insert a <span class="dt">Nothing</span> m
+          _  <span class="ot">-&gt;</span> M.insert a (<span class="dt">Just</span> <span class="fu">$</span> R.fromList b) m</code></pre></div>
+<p>With this at our disposal, it’s easy to model and run the example Markov chain I mentioned earlier.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">example ::</span> <span class="dt">Markov</span> <span class="dt">PureMT</span> <span class="dt">String</span>
+example <span class="fu">=</span> fromList [(<span class="st">&quot;E&quot;</span>, [(<span class="st">&quot;E&quot;</span>, <span class="dv">3</span>), (<span class="st">&quot;A&quot;</span>, <span class="dv">7</span>)]), (<span class="st">&quot;A&quot;</span>, [(<span class="st">&quot;E&quot;</span>, <span class="dv">4</span>), (<span class="st">&quot;A&quot;</span>, <span class="dv">6</span>)])]</code></pre></div>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">λ<span class="fu">&gt;</span> <span class="fu">:</span>m <span class="fu">+</span> <span class="dt">System.Random.Mersenne.Pure64</span>
+λ<span class="fu">&gt;</span> gen <span class="ot">&lt;-</span> newPureMT
+λ<span class="fu">&gt;</span> runMarkov <span class="dv">15</span> example gen <span class="st">&quot;E&quot;</span>
+<span class="dt">Right</span> [<span class="st">&quot;E&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;A&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;E&quot;</span>,<span class="st">&quot;A&quot;</span>]</code></pre></div>
+<p>The Markov chain passes through “A” a bit more often than “E”, which is to be expected from its definition.</p>
+<h3 id="towards-a-sentence-generator">Towards a Sentence Generator</h3>
+<p>The process of sentence generation using Markov chains is pretty simple: For each word in a “seed text,” find the probability of each other word proceeding it. Build a Markov chain out of these probabilities, using words as states, and run it a desired number of times. In order to do this, we’ll first need a utility function which takes pairs of elements (which will represent words along with the word following them in a “seed text”) and produces a Markov chain out of them.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">insertMkvPairsInto ::</span> (<span class="dt">Hashable</span> a, <span class="dt">Eq</span> a) <span class="ot">=&gt;</span> <span class="dt">MarkovI</span> a <span class="ot">-&gt;</span> [(a, a)] <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> a
+insertMkvPairsInto mkv [] <span class="fu">=</span> mkv
+insertMkvPairsInto mkv ps <span class="fu">=</span> insertEnd lst <span class="fu">$</span> foldl&#39; (flip (uncurry (insertMkvI <span class="dv">1</span>))) mkv ps
+  <span class="kw">where</span> lst <span class="fu">=</span> snd <span class="fu">$</span> last ps</code></pre></div>
+<p>For each pair <code>(x, y)</code>, we insert a transition <code>x -&gt; y</code> with weight 1 into the Markov chain, and insert the final value in as an <code>End</code>. The reason this works is because of something I mentioned earlier: <code>Rand</code> handles distributions like <code>[(True, 1), (True, 1), (False, 1)]</code> properly. We build lists very similar to this one when processing a block of text for sentence generation, and when finally converting to <code>Markov</code>, all of that plumbing gets handled automatically. As a final note, we’ll use that <code>End</code> construct to mark the end of a sentence.</p>
+<p>The next thing is actually building a <code>MarkovI</code> from a sentence – this can be done by zipping the list of its words with the tail of it and using the aforementioned function, like so:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import qualified</span> <span class="dt">Data.Text</span> <span class="kw">as</span> <span class="dt">T</span>
+<span class="ot">wordPairs ::</span> <span class="dt">T.Text</span> <span class="ot">-&gt;</span> [(<span class="dt">T.Text</span>, <span class="dt">T.Text</span>)]
+wordPairs <span class="fu">=</span> (zip <span class="fu">&lt;*&gt;</span> tail) <span class="fu">.</span> T.words
+
+<span class="ot">insertSentence ::</span> <span class="dt">MarkovI</span> <span class="dt">T.Text</span> <span class="ot">-&gt;</span> <span class="dt">T.Text</span> <span class="ot">-&gt;</span> <span class="dt">MarkovI</span> <span class="dt">T.Text</span>
+insertSentence mkv <span class="fu">=</span> insertMkvPairsInto mkv <span class="fu">.</span> wordPairs</code></pre></div>
+<p><small>wordPairs could be written more simply in a pointful style, but I think the point{free, less} version is cool. :)</small></p>
+<p>Now, to build a Markov chain from a bunch of sentences (be it a paragraph, a book), we can just fold into an empty <code>MarkovI</code> and convert it from the intermediate representation:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromSentences ::</span> <span class="dt">R.RandomGen</span> g <span class="ot">=&gt;</span> [<span class="dt">T.Text</span>] <span class="ot">-&gt;</span> <span class="dt">Markov</span> g <span class="dt">T.Text</span>
+fromSentences <span class="fu">=</span> fromMarkovI <span class="fu">.</span> foldl&#39; insertSentence M.empty</code></pre></div>
+<p>The rest is mostly plumbing:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">{-# LANGUAGE OverloadedStrings #-}</span>
+<span class="kw">import </span><span class="dt">System.Random.Mersenne.Pure64</span>
+
+<span class="ot">runFromSentences ::</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> [<span class="dt">T.Text</span>] <span class="ot">-&gt;</span> <span class="dt">IO</span> (<span class="dt">Either</span> <span class="dt">Err</span> <span class="dt">T.Text</span>)
+runFromSentences n sentences <span class="fu">=</span> <span class="kw">do</span>
+  g <span class="ot">&lt;-</span> newPureMT
+  <span class="kw">let</span> hds <span class="fu">=</span> map (head <span class="fu">.</span> T.words) sentences
+  seed <span class="ot">&lt;-</span> R.uniform hds
+  return <span class="fu">$</span> T.unwords <span class="fu">&lt;$&gt;</span> runMarkov n (fromSentences sentences) g seed
+
+<span class="ot">test ::</span> [<span class="dt">T.Text</span>]
+test <span class="fu">=</span> [
+  <span class="st">&quot;I am a monster.&quot;</span>,
+  <span class="st">&quot;I am a rock star.&quot;</span>,
+  <span class="st">&quot;I want to go to Hawaii.&quot;</span>,
+  <span class="st">&quot;I want to eat a hamburger.&quot;</span>,
+  <span class="st">&quot;I have a really big headache.&quot;</span>,
+  <span class="st">&quot;Haskell is a fun language!&quot;</span>,
+  <span class="st">&quot;Go eat a big hamburger!&quot;</span>,
+  <span class="st">&quot;Markov chains are fun to use!&quot;</span>
+  ]</code></pre></div>
+<p>We get a new <a href="http://hackage.haskell.org/package/mersenne-random-pure64-0.2.0.2/docs/System-Random-Mersenne-Pure64.html"><code>PureMT</code></a> to use for a generator, and grab a random word (from the beginning of a sentence) to use as the starting state. We then run a markov simulation, collecting the words we pass through, and finally call <code>T.unwords</code> on the result to build a sentence from the words in sequence. Running this yields some interesting statements (and a lot of nonsensical ones), for example:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">λ<span class="fu">&gt;</span> runFromSentences <span class="dv">10</span> test
+<span class="dt">Right</span> <span class="st">&quot;Haskell is a hamburger.&quot;</span>
+<span class="dt">Right</span> <span class="st">&quot;Go eat a really big headache.&quot;</span>
+<span class="dt">Right</span> <span class="st">&quot;I am a fun to go to go to eat&quot;</span></code></pre></div>
+<h3 id="application-rap-candy">Application: Rap Candy</h3>
+<p>As you might imagine, this type of thing gets more interesting when you’re working with a larger set of sentences. For me, I thought it would be fun(ny) to take lines from Eminem’s music as “sentences,” make tweet-sized snippets from them, and automate a twitter bot to post one every day. Most of the tweets are pretty nonsensical (and very vulgar), here’s one:</p>
+<blockquote class="twitter-tweet" lang="en">
+<p>
+Now I'm on a magazine
+Take a catastrophe for me
+Cause of New sh*t, exclusive whoo kid
+I'm the first king of danger, intertwine it
+</p>
+— rapcandy (<span class="citation">@_rapcandy</span>) <a href="https://twitter.com/_rapcandy/statuses/495019304883331072">August 1, 2014</a>
+</blockquote>
+<script async src="//platform.twitter.com/widgets.js" charset="utf-8"></script>
+<p><a href="https://github.com/5outh/rapcandy">rapcandy is open source</a>. Its Markov chain mechanism differs slightly from what was presented here, but the ideas are the same. It also includes a simple example of how to connect to Twitter using Haskell (which I’ll be covering separately in a short blog post soon), as well as web-scraper written in node that I used to download Eminem’s lyrics programmatically. Feel free to browse the code and follow <a href="https://twitter.com/_rapcandy">@_rapcandy on Twitter</a>.</p>
+<p>I’ve also boxed up (most of) the code from this blog post into a small cabal package that you can use if you’d like to play around with your own Markov chain based applications. <a href="https://github.com/5outh/markov-sim">You can download markov-sim and browse its source here</a>.</p>
+</div>
+]]></description>
+    <pubDate>Mon, 04 Aug 2014 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2014-08-04-markov-chains.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
+    <title>An attempt at zipper-based type inference in Molecule</title>
+    <link>http://kovach.me/posts/2014-07-21-molecule.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<h3 id="prelude">Prelude</h3>
+<p>I recently designed a very small programming language, <a href="https://github.com/5outh/Molecule">Molecule</a>. Molecule is a slight extension of the <a href="http://en.wikipedia.org/wiki/Simply_typed_lambda_calculus">simply typed lambda calculus (STLC)</a> that supports type inference. It is mostly a contained experiment on how to implement type inference in an STLC-like language.</p>
+<p>In this blog post, I want to talk about my experience with Molecule and its static type checking and inference mechanism, which works for <em>most</em> valid programs. I do not know if this approach can be modified to work for <em>all</em> valid programs (and indeed this is a problem), but I think it’s worth talking about regardless.</p>
+<p>Molecule and its REPL, <code>mi</code>, can be downloaded <a href="https://github.com/5outh/Molecule">from GitHub</a>, if you’d like to play with it.</p>
+<h3 id="syntax">Syntax</h3>
+<p>Molecule’s syntax tries to emulate the mathematical notation used in the lambda calculus, without explicit type annotations (which aren’t even allowed syntactically). A valid program can be one of the following expressions (informally):</p>
+<ul>
+<li><code>Int</code> literals</li>
+<li><code>Boolean</code> literals (<code>t</code> and <code>f</code>)</li>
+<li>Addition (<code>1 + 2</code>)</li>
+<li>Boolean Or (<code>f | t</code>)</li>
+<li>Lambda abstractions (<code>\x. x + x</code>), and</li>
+<li>Function application (<code>(\x.x) 80</code>)</li>
+</ul>
+<p>Expressions can have type <code>Int</code>, <code>Bool</code>, or any function type between types, e.g. <code>Int -&gt; Bool</code>. Expressions are monomorphic, meaning they cannot take more than one value. For a quick example, the polymorphic identity function <code>\x.x</code> has no type in Molecule – only applied to another expression can it take on a type. <code>(\x.x) 10</code>, for example, has type <code>Int</code>.</p>
+<p>The type inference mechanism that I will be describing never produces the <em>wrong</em> type for a Molecule expression, but it fails to realize that some expressions can be typed at all. The following expression, for example:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">((\x<span class="fu">.</span>x) (\x<span class="fu">.</span>x)) f</code></pre></div>
+<p>should have type <code>Bool</code>; however, Molecule’s type checker cannot unify its type.</p>
+<h3 id="type-inference-in-molecule">Type Inference in Molecule</h3>
+<p>When designing a slightly more ambitious PL, I was writing a naïve type inferencer and hit the point where I was pattern matching on non-leaf expression constructors in order to determine the types of the leaves. At a basic level, there was an <code>Expr</code> data type akin to:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Expr</span> <span class="fu">=</span> 
+    <span class="dt">Var</span> <span class="dt">String</span>
+  <span class="fu">|</span> <span class="dt">PInt</span> <span class="dt">Int</span>
+  <span class="fu">|</span> <span class="dt">Expr</span> <span class="fu">:+:</span> <span class="dt">Expr</span>
+   <span class="co">-- ... and so on</span></code></pre></div>
+<p>And I was pattern matching against, for example <code>(Var &quot;x&quot; :+: a)</code> as well as <code>(a :+: Var &quot;x&quot;)</code> in order to determine that <code>x</code> was an <code>Int</code>. As you can imagine, this got tedious quickly. I wanted to be able to have some function <code>infer :: Expr -&gt; Type</code> such that <code>infer (Var x)</code> would spit out the type for <code>x</code> in the context of its expression. After narrowing down the information that I actually needed to typecheck a <code>Var</code>, I realized all that was needed in order to infer the type of an expression was information about where the <code>Var</code> came from one level higher in the AST. For example, in the expression <code>(Var &quot;x&quot; :+: a)</code>, just knowing that <code>Var &quot;x&quot;</code> came from a <code>:+:</code> expression is enough to determine that <code>x : Int</code>, and similarly for other types of expressions.</p>
+<p>Let’s dive into the actual definitions of Molecule’s data types in order to talk about how this works concretely in practice.</p>
+<p>Types are simple, as described above. <code>TLam</code> represents function types (<code>Int -&gt; Bool === TLam TInt TBool</code>).</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">MoleculeType</span> <span class="fu">=</span>
+    <span class="dt">TBool</span>
+  <span class="fu">|</span> <span class="dt">TInt</span>
+  <span class="fu">|</span> <span class="dt">TLam</span> <span class="dt">MoleculeType</span> <span class="dt">MoleculeType</span>
+    <span class="kw">deriving</span> <span class="dt">Eq</span></code></pre></div>
+<p>Values can be <code>Bool</code>s, <code>Int</code>s, or function values with an expression environment (mappings from variables in scope to expressions), the name of the argument it takes, and an expression body.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Name</span> <span class="fu">=</span> <span class="dt">String</span>
+<span class="kw">type</span> <span class="dt">Env</span> <span class="fu">=</span> <span class="dt">Map</span> <span class="dt">Name</span> <span class="dt">MoleculeValue</span>
+
+<span class="kw">data</span> <span class="dt">MoleculeValue</span> <span class="fu">=</span>
+    <span class="dt">VBool</span> <span class="dt">Bool</span>
+  <span class="fu">|</span> <span class="dt">VInt</span> <span class="dt">Int</span>
+  <span class="fu">|</span> <span class="dt">VLam</span> <span class="dt">Env</span> <span class="dt">Name</span> <span class="dt">MoleculeExpr</span></code></pre></div>
+<p>Expressions are represented as you might expect. <code>EAbs</code> represents a lambda abstraction, <code>EApp</code> function application, and <code>:+:</code> and <code>:|:</code> correspond to addition and boolean <code>or</code>, respectively.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">MoleculeExpr</span> <span class="fu">=</span>
+    <span class="dt">EVar</span> <span class="dt">Name</span>
+  <span class="fu">|</span> <span class="dt">ETrue</span> 
+  <span class="fu">|</span> <span class="dt">EFalse</span>
+  <span class="fu">|</span> <span class="dt">EInt</span> <span class="dt">Int</span>
+  <span class="fu">|</span> <span class="dt">EAbs</span> <span class="dt">Name</span> <span class="dt">MoleculeExpr</span>
+  <span class="fu">|</span> <span class="dt">EApp</span> <span class="dt">MoleculeExpr</span> <span class="dt">MoleculeExpr</span>
+  <span class="fu">|</span> <span class="dt">MoleculeExpr</span> <span class="fu">:+:</span> <span class="dt">MoleculeExpr</span>
+  <span class="fu">|</span> <span class="dt">MoleculeExpr</span> <span class="fu">:|:</span> <span class="dt">MoleculeExpr</span>
+    <span class="kw">deriving</span> <span class="dt">Eq</span> </code></pre></div>
+<p>Here’s the key data type we need in order to keep track of the expression we’re coming from when we hit <code>Var</code> values in the type inferencer. Each of these <code>Crumb</code>s tag the expression one level higher and carry along all information in it that isn’t already present in the expression currently being expected. This is one of the pieces of a <a href="http://learnyouahaskell.com/zippers">zipper</a> for the Molecule AST.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">MoleculeCrumb</span> <span class="fu">=</span>
+  <span class="fu">|</span> <span class="dt">CPlus</span> <span class="dt">MoleculeExpr</span>   <span class="co">-- Came from +</span>
+  <span class="fu">|</span> <span class="dt">COr</span> <span class="dt">MoleculeExpr</span>     <span class="co">-- Came from |</span>
+  <span class="fu">|</span> <span class="dt">CAbs</span> <span class="dt">Name</span>            <span class="co">-- Came from a lambda abstraction</span>
+  <span class="fu">|</span> <span class="dt">CApp1</span> <span class="dt">MoleculeExpr</span>   <span class="co">-- Came from first arg of application</span>
+  <span class="fu">|</span> <span class="dt">CApp2</span> <span class="dt">MoleculeExpr</span>   <span class="co">-- Came from second arg of application</span>
+    <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)</code></pre></div>
+<p>We use a basic monad transformer stack to represent the type of the type checker.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">TypeEnv</span>     <span class="fu">=</span> <span class="dt">M.Map</span> <span class="dt">Name</span> <span class="dt">MoleculeType</span>
+<span class="kw">type</span> <span class="dt">Scope</span>       <span class="fu">=</span> <span class="dt">S.Set</span> <span class="dt">Name</span>
+<span class="kw">type</span> <span class="dt">Typechecker</span> <span class="fu">=</span> <span class="dt">ExceptT</span> <span class="dt">MoleculeError</span> (<span class="dt">ReaderT</span> (<span class="dt">Maybe</span> <span class="dt">MoleculeCrumb</span>, <span class="dt">Scope</span>) (<span class="dt">StateT</span> <span class="dt">TypeEnv</span> <span class="dt">Identity</span>))</code></pre></div>
+<p><code>TypeEnv</code>s are maps from variable names to types, and a <code>Scope</code> is a list of variable names in scope. The typechecker has access to 3 basic (monadic) effects:</p>
+<ol style="list-style-type: decimal">
+<li>Error production, via <code>ExceptT MoleculeError</code></li>
+<li>Threading variable scope and a crumb through the computation, via <code>ReaderT (Maybe MoleculeCrumb, Scope)</code>, and</li>
+<li>Access to a mutable type environment, via <code>StateT TypeEnv Identity</code>.</li>
+</ol>
+<p>Note that we don’t need a “full” zipper here, since we only care about the <em>single</em> expression that the variable came from, not the entire path from the AST root. This is all we need to implement a relatively robust type inference/checking mechanism for Molecule. The <em>inference</em> part of type checking takes place in the following branch of the <code>check</code> function, which accepts an <code>EVar</code> (Note: this is modified for brevity; in practice, more specific type errors are thrown for failing expressions).</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">check ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Typechecker</span> <span class="dt">MoleculeType</span>
+check (<span class="dt">EVar</span> name) <span class="fu">=</span> <span class="kw">do</span>
+  <span class="kw">let</span> addBinding name typ <span class="fu">=</span> modify (M.insert name typ) <span class="fu">&gt;&gt;</span> return typ
+      typeError <span class="fu">=</span> throwError <span class="fu">.</span> <span class="dt">TypeError</span>
+  (crumb, scope) <span class="ot">&lt;-</span> ask
+  <span class="kw">if</span> S.notMember name scope
+  <span class="kw">then</span> typeError <span class="fu">$</span> <span class="st">&quot;variable not in scope: &quot;</span> <span class="fu">++</span> name
+  <span class="kw">else</span> <span class="kw">do</span>
+    env <span class="ot">&lt;-</span> get
+    <span class="kw">case</span> M.lookup name env <span class="kw">of</span>
+      <span class="dt">Nothing</span> <span class="ot">-&gt;</span> <span class="kw">case</span> crumb <span class="kw">of</span>
+        <span class="dt">Just</span> x <span class="ot">-&gt;</span> <span class="kw">case</span> x <span class="kw">of</span>
+          <span class="dt">CPlus</span> _ <span class="ot">-&gt;</span> addBinding name <span class="dt">TInt</span>
+          <span class="dt">COr</span>   _ <span class="ot">-&gt;</span> addBinding name <span class="dt">TBool</span>
+          <span class="dt">CAbs</span> nm <span class="ot">-&gt;</span> <span class="kw">case</span> M.lookup nm env <span class="kw">of</span>
+            <span class="dt">Just</span> t  <span class="ot">-&gt;</span> addBinding name t
+          <span class="dt">CApp2</span> e <span class="ot">-&gt;</span> <span class="kw">do</span>
+            t <span class="ot">&lt;-</span> check e
+            <span class="kw">case</span> t <span class="kw">of</span>
+              <span class="dt">TLam</span> v _ <span class="ot">-&gt;</span> addBinding name v
+      <span class="dt">Just</span> t <span class="ot">-&gt;</span> <span class="kw">case</span> crumb <span class="kw">of</span>
+        <span class="dt">Nothing</span> <span class="ot">-&gt;</span> return t
+        <span class="dt">Just</span> cb <span class="ot">-&gt;</span> <span class="kw">case</span> cb <span class="kw">of</span>
+          <span class="dt">CPlus</span> _ <span class="fu">|</span> t <span class="fu">==</span> <span class="dt">TInt</span>  <span class="ot">-&gt;</span> return <span class="dt">TInt</span>
+          <span class="dt">COr</span>   _ <span class="fu">|</span> t <span class="fu">==</span> <span class="dt">TBool</span> <span class="ot">-&gt;</span> return <span class="dt">TBool</span>
+          <span class="dt">CAbs</span> _ <span class="ot">-&gt;</span> return t
+          <span class="dt">CApp1</span> _ <span class="ot">-&gt;</span> <span class="kw">case</span> t <span class="kw">of</span>
+            <span class="dt">TLam</span> _ _ <span class="ot">-&gt;</span> return t
+          <span class="dt">CApp2</span> e <span class="ot">-&gt;</span> <span class="kw">do</span>
+            t&#39; <span class="ot">&lt;-</span> check e
+            <span class="kw">case</span> t&#39; <span class="kw">of</span>
+              <span class="dt">TLam</span> typ _ <span class="fu">|</span> typ <span class="fu">==</span> t <span class="ot">-&gt;</span> return t</code></pre></div>
+<p>That’s a bit of a mouthful, but can be broken up into sections. First off, if we hit this block of code, we’ve hit a variable in a program and need to unify its type. We first get the crumb and scope that has been accumulating throughout traversal of the AST. We then check if the variable in question is in scope; if not, we throw a <code>TypeError</code>. We next get the type environment <code>env</code>. If the variable in question is not bound in the type environment, we bind it to the appropriate type and return it using <code>addBinding</code>. If we came from a lambda abstraction, the (sub)expression must be <code>\x.x</code>, so we return the type of <code>x</code> in the environment, if it already exists. If we came from the second value of an application (i.e. the value being <em>applied</em> to a function), we check the type of the function it is being applied to – if it isn’t a lambda abstraction, the typechecker fails.</p>
+<p>It’s worth noting that this last <code>CApp2</code> rule is exactly <em>why</em> the expression I noted earlier – <code>((\x.x) (\y.y)) 10</code> – fails. The subexpression <code>((\x.x) (\y.y))</code> doesn’t typecheck to a <code>TLam</code>; it fails to typecheck because <code>\y.y</code> isn’t unifiable. But I digress – the typechecker works reasonably well and I think the schema is simple enough to be interesting, even if not exactly practical/suitable for real-world usage in its current state.</p>
+<p>If there exists a binding in the type environment for the variable in question, we just make sure that type matches what we expect and return it.</p>
+<p>The rest of the <code>check</code> function consists of functions in the same vein as this one (the <code>:+:</code> branch, again omitting error-handling noise):</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">withCrumb ::</span> <span class="dt">Typechecker</span> a <span class="ot">-&gt;</span> <span class="dt">MoleculeCrumb</span> <span class="ot">-&gt;</span> <span class="dt">Typechecker</span> a
+withCrumb action crumb <span class="fu">=</span> local (_1 <span class="fu">.~</span> <span class="dt">Just</span> crumb) action
+
+check (e1 <span class="fu">:+:</span> e2) <span class="fu">=</span> <span class="kw">do</span>
+  e1&#39; <span class="ot">&lt;-</span> check e1 <span class="ot">`withCrumb`</span> <span class="dt">CPlus</span> e2
+  e2&#39; <span class="ot">&lt;-</span> check e2 <span class="ot">`withCrumb`</span> <span class="dt">CPlus</span> e1
+  <span class="kw">case</span> (e1&#39;, e2&#39;) <span class="kw">of</span>
+    (<span class="dt">TInt</span>, <span class="dt">TInt</span>) <span class="ot">-&gt;</span> return <span class="dt">TInt</span></code></pre></div>
+<p>where we set the <code>Crumb</code> in the expression with a helper function <code>withCrumb</code> (which makes use of the <code>local</code> and a common <code>lens</code>/operation) and propagate typechecking through the rest of the AST.</p>
+<p>We can run the typechecker using the final function <code>typecheck</code> (which looks complex but just runs a typechecking operation with initially empty environments and no crumb):</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">typecheck ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">MoleculeError</span> <span class="dt">MoleculeType</span>
+typecheck <span class="fu">=</span> runTypecheck <span class="dt">Nothing</span> S.empty M.empty
+  <span class="kw">where</span> runTypecheck crumb scope te expr <span class="fu">=</span> 
+    runIdentity <span class="fu">$</span> evalStateT (runReaderT (runExceptT (check expr)) (crumb, scope)) te</code></pre></div>
+<p>Now we have a static typechecker for Molecule expressions, which means, most importantly, that we can run expressions safely <em>without the types</em>, which in turn removes a lot of ambiguity from the actual evaluator and allows for faster evaluation since expressions need not be typechecked at runtime.</p>
+<h3 id="evaluating-molecule-expressions">Evaluating Molecule Expressions</h3>
+<p>Let’s get right to it – the code for evaluation in Molecule looks like this:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">type</span> <span class="dt">Evaluator</span> <span class="fu">=</span> <span class="dt">ExceptT</span> <span class="dt">MoleculeError</span> (<span class="dt">Reader</span> (<span class="dt">M.Map</span> <span class="dt">Name</span> <span class="dt">MoleculeValue</span>))
+
+<span class="ot">eval ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Evaluator</span> <span class="dt">MoleculeValue</span>
+eval e <span class="fu">=</span> <span class="kw">do</span>
+  env <span class="ot">&lt;-</span> ask
+  <span class="kw">case</span> e <span class="kw">of</span>
+    <span class="dt">ETrue</span>   <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VBool</span> <span class="dt">True</span>
+    <span class="dt">EFalse</span>  <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VBool</span> <span class="dt">False</span>
+    <span class="dt">EInt</span> x  <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VInt</span> x
+    <span class="dt">EAbs</span> name e1 <span class="ot">-&gt;</span> return <span class="fu">$</span> <span class="dt">VLam</span> env name e1
+    <span class="dt">EVar</span> nm <span class="ot">-&gt;</span> return <span class="fu">$</span> fromJust (M.lookup nm env) 
+    e1 <span class="fu">:+:</span> e2 <span class="ot">-&gt;</span> <span class="kw">do</span>
+      [a, b] <span class="ot">&lt;-</span> mapM eval [e1, e2]
+      <span class="kw">case</span> (a, b) <span class="kw">of</span>
+        (<span class="dt">VInt</span> a&#39;, <span class="dt">VInt</span> b&#39;) <span class="ot">-&gt;</span> return <span class="fu">.</span> <span class="dt">VInt</span> <span class="fu">$</span> a&#39; <span class="fu">+</span> b&#39;
+    <span class="dt">EApp</span> e1 e2 <span class="ot">-&gt;</span> <span class="kw">do</span>
+      [e1&#39;, e2&#39;] <span class="fu">=</span> mapM eval [e1, e2]
+      <span class="kw">case</span> e1&#39; <span class="kw">of</span>
+        <span class="dt">VLam</span> env&#39; name body <span class="ot">-&gt;</span> local (const <span class="fu">$</span> M.insert name e2&#39; env&#39;) <span class="fu">$</span> eval body</code></pre></div>
+<p>I’ve removed the <code>:|:</code> rule for brevity (hint: it looks just like <code>:+:</code>). Most of this is pretty straightforward because we don’t have to deal with typechecking at runtime. The most complex evaluation rule is the one for <code>EApp</code>, which applies <code>e2</code> to <code>e1</code>. This rule says to evaluate <code>e1</code> and <code>e2</code>, then take the resulting lambda abstraction, bind the argument name to <code>e2</code>’s evaluated expression, then evaluate the lambda abstraction’s body with the modified environment.</p>
+<p>Again, we can run the evaluator with a simple wrapper function <code>evaluate</code>:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">evaluate ::</span> <span class="dt">MoleculeExpr</span> <span class="ot">-&gt;</span> <span class="dt">Either</span> <span class="dt">MoleculeError</span> <span class="dt">MoleculeValue</span>
+evaluate <span class="fu">=</span> runEval M.empty
+  <span class="kw">where</span> runEval env e <span class="fu">=</span> runReader (runExceptT (eval e)) env</code></pre></div>
+<p>…and that’s basically all there is to Molecule! The <code>mi</code> REPL is built with <a href="https://hackage.haskell.org/package/haskeline">haskeline</a> and supports type checking via <code>:t</code> (a la <code>ghci</code>) and evaluation by simply typing (no pun intended) expressions.</p>
+<p>I’ve still got a long way to go in the programming languages world, but I’m proud of Molecule even if its type inference is a little flawed. My next project will either have a type system closer to <a href="http://en.wikipedia.org/wiki/Hindley–Milner_type_system">Hindley Milner</a> (so I can type infer with something closer to <a href="http://en.wikipedia.org/wiki/Hindley–Milner_type_system#Algorithm_W">Algorithm W</a>), or just make type annotations explicit (for a different set of challenges).</p>
+<p>Again, Molecule’s full source code is <a href="https://github.com/5outh/Molecule">available on GitHub</a>.</p>
+<p>Ben</p>
+</div>
+]]></description>
+    <pubDate>Mon, 21 Jul 2014 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2014-07-21-molecule.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
+    <title>Hylomorphisms and treesort</title>
+    <link>http://kovach.me/posts/2014-04-30-hylomorphisms-and-treesort.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<p>Consider the following data structure, representing a binary search tree:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span>  <span class="dt">BST</span> a <span class="fu">=</span> 
+    <span class="dt">Tree</span> (<span class="dt">BST</span> a) a (<span class="dt">BST</span> a)
+  <span class="fu">|</span> <span class="dt">Empty</span> <span class="kw">deriving</span> (<span class="dt">Eq</span>)</code></pre></div>
+<p>As it turns out, this data structure provides a nice way to introduce the concepts of different types of morphisms used all over the place in Haskell - the fold, or “catamorphism”, the unfold, or “anamorphism”, and compositions of the two, the “hylomorphism” and “metamorphism.”</p>
+<p>The bracket notations that I’ll use below come from Meijer, Fokkinga and Patterson’s excellent paper <a href="http://eprints.eemcs.utwente.nl/7281/01/db-utwente-40501F46.pdf">Functional Programming with Bananas, Lenses, Envelopes and Barbed Wire</a>. If you enjoy the article, I’d suggest giving it a look!</p>
+<p>I’m writing this because I recall encountering these names when learning Haskell early on and being very confused, particularly by the latter two types. Folds (and to a lesser extent, unfolds) are commonplace in Haskell. Hylo- and metamorphisms are also pretty common, but they’re not as easy to spot. From <a href="http://en.wikipedia.org/wiki/Hylomorphism_(computer_science)">Wikipedia</a>:</p>
+<blockquote>
+<p>In computer science, and in particular functional programming, a hylomorphism is a recursive function, corresponding to the composition of an anamorphism (which first builds a set of results; also known as ‘unfolding’) and a catamorphism (which then folds these results into a final return value)</p>
+</blockquote>
+<p>The canonical example of a hylomorphism is the factorial function, which (usually) implicitly composes functions. The goal of this post is to lay out an <strong>explicit</strong> example of a hylo- (and meta-) morphism in a natural way. We’ll start with a couple of functions:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">insert ::</span> <span class="dt">Ord</span> a <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> <span class="dt">BST</span> a <span class="ot">-&gt;</span> <span class="dt">BST</span> a
+insert x <span class="dt">Empty</span> <span class="fu">=</span> <span class="dt">Tree</span> <span class="dt">Empty</span> x <span class="dt">Empty</span>
+insert x (<span class="dt">Tree</span> left a right)
+  <span class="fu">|</span> x <span class="fu">&lt;</span> a     <span class="fu">=</span> <span class="dt">Tree</span> (treeInsert x left) a right
+  <span class="fu">|</span> otherwise <span class="fu">=</span> <span class="dt">Tree</span> left a (treeInsert x right)
+
+<span class="ot">fromList ::</span> <span class="dt">Ord</span> a <span class="ot">=&gt;</span> [a] <span class="ot">-&gt;</span> <span class="dt">BST</span> a
+fromList xs <span class="fu">=</span> foldr treeInsert <span class="dt">Empty</span> xs</code></pre></div>
+<p>We have an insertion function and our first example of a catamorphism, <code>fromList</code>! We’re folding all values from a list into a new structure (a <code>BST</code>) and destroying the list in the process. This function can be written in so called “banana brackets,” like so: <span class="math inline"><em>f</em><em>r</em><em>o</em><em>m</em><em>L</em><em>i</em><em>s</em><em>t</em> = (​|<em>t</em><em>r</em><em>e</em><em>e</em><em>I</em><em>n</em><em>s</em><em>e</em><em>r</em><em>t</em>|​)</span>.</p>
+<p>I<code>fromList</code> can also be considered an anamorphism. Catamorphisms destroy structures to build final values, whereas anamorphisms take an initial seed value and build a new structure from it. In <code>fromList</code>, <code>xs</code> can be considered a “seed” value to build a <code>BST a</code> from, making <code>fromList</code> a perfectly valid anamorphism as well. As such, <code>fromList</code> can also be written in “lens brackets”: <span class="math inline"><em>f</em><em>r</em><em>o</em><em>m</em><em>L</em><em>i</em><em>s</em><em>t</em> = [​(<em>t</em><em>r</em><em>e</em><em>e</em><em>I</em><em>n</em><em>s</em><em>e</em><em>r</em><em>t</em>)​]</span>.</p>
+<p>We can also define a new pair of cata/anamorphisms by folding the tree into a list:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">foldTree ::</span> (a <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> b <span class="ot">-&gt;</span> <span class="dt">BST</span> a <span class="ot">-&gt;</span> b
+foldTree f b <span class="dt">Empty</span> <span class="fu">=</span> b
+foldTree f b (<span class="dt">Tree</span> left a right) <span class="fu">=</span> foldTree f ( f a (foldTree f b right) ) left
+
+<span class="ot">toList ::</span> <span class="dt">BST</span> a <span class="ot">-&gt;</span> [a]
+toList t <span class="fu">=</span> foldTree (<span class="fu">:</span>) [] t</code></pre></div>
+<p><code>foldTree</code> is analogous to <code>foldr</code> (and would be a fine definition for <code>foldr</code> in a <code>Foldable</code> instance), and <code>toList</code> destructs (folds) a <code>BST a</code> into an <code>[a]</code>. Thinking this way, <code>toList</code> again defines a catamorphism, this time from <code>BST a -&gt; [a]</code>, denoted <span class="math inline"><em>t</em><em>o</em><em>L</em><em>i</em><em>s</em><em>t</em> = (​|:|​)</span>. But we can also think of <code>toList</code> as unfolding a <code>BST a</code> into an <code>[a]</code>, so we can analogously define an anamorphism <span class="math inline"><em>t</em><em>o</em><em>L</em><em>i</em><em>s</em><em>t</em> = [​(:)​]</span>.</p>
+<p>There’s something interesting about <code>toList</code>: <code>foldTree</code> traverses a <code>BST</code> in order, so it actually produces a sorted list (given that elements are <code>insert</code>ed rather than randomly placed!). Now we have a way to construct a binary search tree from a list of elements, and destruct a binary search tree into a sorted list of elements. This gives rise to a simple definion of a sorting algorithm, namely:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">treesort ::</span> <span class="dt">Ord</span> a <span class="ot">=&gt;</span> [a] <span class="ot">-&gt;</span> [a]
+treesort <span class="fu">=</span> toList <span class="fu">.</span> fromList</code></pre></div>
+<p>Because <code>toList</code> and <code>fromList</code> are both cata- and anamorphims, <code>treesort</code> actually defines a hylomorphism <em>and</em> a metamorphism.</p>
+<p>As we noted before, a hylomorphism is defined as the composition of an anamorphism (unfold) with a catamorphism (fold). If we think of <code>fromList</code> as an anamorphism and <code>toList</code> as a catamorphism, we have constructed a hylomorphism directly. Namely, the function <span class="math inline"><em>t</em><em>r</em><em>e</em><em>e</em><em>s</em><em>o</em><em>r</em><em>t</em> = [​[([], ( : )),(<em>i</em><em>n</em><em>s</em><em>e</em><em>r</em><em>t</em>, <em>n</em><em>u</em><em>l</em><em>l</em>)]​]</span> (the brackets here are commonly called “envelopes”). <code>null</code> isn’t explicit in the definition of <code>treesort</code> (instead, it’s implicit in <code>foldr</code>), but it describes a terminating condition for <code>fromList</code>. Similarly, <code>[]</code> is just the container to fold values into.</p>
+<p>We can once again think of this function in the opposite manner by thinking of <code>fromList</code> as a catamorphism and <code>toList</code> as an anamorphism, giving rise to a metamorphism, defined by composition in the opposite direction. Metamorphisms (as far as I know) have no bracket notation in literature, but I want to mention that we do have a name for such things. My guess is that any metamorphism can actually be thought of as a hylomorphism, since the objects being operated on must be both foldable and unfoldable, but I don’t know for sure.</p>
+<p>Finally, note that we can also create another function:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">what ::</span> <span class="dt">Ord</span> a <span class="ot">=&gt;</span> <span class="dt">BST</span> a <span class="ot">-&gt;</span> <span class="dt">BST</span> a
+what <span class="fu">=</span> fromList <span class="fu">.</span> toList</code></pre></div>
+<p>which is also a hylo- and metamorphism. However, this isn’t very useful (in fact, one might consider it counterproductive), but I’ll leave it as an exercise to the reader to figure out why.</p>
+<p>Thanks for reading!</p>
+<p>Ben</p>
+</div>
+]]></description>
+    <pubDate>Wed, 30 Apr 2014 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2014-04-30-hylomorphisms-and-treesort.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+
+    </channel>
+</rss>
