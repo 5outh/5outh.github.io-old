@@ -25,7 +25,7 @@
 <li>Set up some program state that will be manipulated over the course of the program</li>
 <li>Run the program!</li>
 </ul>
-<p>The <a href="https://hackage.haskell.org/package/mtl"><code>mtl</code></a> package installed to run these examples.</p>
+<p>The <a href="https://hackage.haskell.org/package/mtl"><code>mtl</code></a> package will need to be installed to run these examples.</p>
 <p>In haskell, we have to be explicit about our the shape of our state and environment. A common way to represent a program with access to these basic needs, and not much else, is with the following data type:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">import </span><span class="dt">Control.Monad.Reader</span>
 <span class="kw">import </span><span class="dt">Control.Monad.State</span>
