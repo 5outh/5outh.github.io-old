@@ -8,13 +8,13 @@
         <name>Benjamin Kovach</name>
         <email>bkovach13@gmail.com</email>
     </author>
-    <updated>2017-02-02T00:00:00Z</updated>
+    <updated>2017-02-03T00:00:00Z</updated>
     <entry>
     <title>Haskell Bits #2: Application Beginnings</title>
-    <link href="http://kovach.me/posts/2017-02-02-haskell-bits-starting.html" />
-    <id>http://kovach.me/posts/2017-02-02-haskell-bits-starting.html</id>
-    <published>2017-02-02T00:00:00Z</published>
-    <updated>2017-02-02T00:00:00Z</updated>
+    <link href="http://kovach.me/posts/2017-02-03-haskell-bits-application-beginnings.html" />
+    <id>http://kovach.me/posts/2017-02-03-haskell-bits-application-beginnings.html</id>
+    <published>2017-02-03T00:00:00Z</published>
+    <updated>2017-02-03T00:00:00Z</updated>
     <summary type="html"><![CDATA[
 <div class="post_body">
 	<p>Are you comfortable creating data types, manipulating lists, composing functions, etc, but not sure how to make a “useful program” with haskell? This is a very common stumbling block when learning. It might be the complaint I’ve heard the most.</p>
