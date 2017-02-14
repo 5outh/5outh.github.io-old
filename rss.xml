@@ -294,7 +294,7 @@ main <span class="fu">=</span>
             
             <span class="co">-- Get by name too:</span>
             getBy (<span class="dt">UniqueName</span> <span class="st">&quot;Cosmic Encounter&quot;</span>) <span class="fu">&gt;&gt;=</span> printIO </code></pre></div>
-<p>(packages needed: <code>persistent</code>, <code>persistent-sqlite</code>, <code>mtl</code>, <code>monad-logger</code>)</p>
+<p>(packages needed: <code>persistent</code>, <code>persistent-template</code>, <code>persistent-sqlite</code>, <code>mtl</code>, <code>monad-logger</code>)</p>
 <p>A couple of things:</p>
 <ul>
 <li><code>SqlPersistT</code> can be thought of as a “SQL Statement Context” - you can write arbitrary queries in these blocks. <em>Each of these is run in its own transaction by default, so be careful! Any exceptions will roll back any changes.</em> (thanks to /u/ephrion for bringing up this point!)</li>
@@ -309,7 +309,7 @@ main <span class="fu">=</span>
 <p>Change the <code>Database.Persist.Sqlite</code> import to <code>Database.Persist.Postgres</code>.</p>
 <p>The only other thing to change in order to connect to <code>postgres</code> instead is the second line of <code>main</code>, to:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="fu">.</span> withPostgresqlPool <span class="st">&quot;host=localhost port=5432 connect_timeout=10&quot;</span> <span class="dv">3</span></code></pre></div>
-<p>(packages needed: <code>persistent</code>, <code>persistent-postgresql</code>, <code>mtl</code>, <code>monad-logger</code>)</p>
+<p>(packages needed: <code>persistent</code>, <code>persistent-template</code>, <code>persistent-postgresql</code>, <code>mtl</code>, <code>monad-logger</code>)</p>
 <p>Everything else works the same!</p>
 <p><a href="https://gist.github.com/5outh/d2f6a8762701928ceb967d25710c7ed1">View the full source here</a></p>
 <p>And the <a href="https://www.stackage.org/lts-8.0/package/persistent-postgresql-2.6">persistent-postgresql documentation</a></p>
@@ -321,7 +321,7 @@ connectInfo <span class="fu">=</span> defaultConnectInfo
     }</code></pre></div>
 <p>and change the same line in <code>main</code> to:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="fu">.</span> withMySQLPool connectInfo <span class="dv">3</span></code></pre></div>
-<p>(packages needed: <code>persistent</code>, <code>persistent-mysql</code>, <code>mtl</code>, <code>monad-logger</code>)</p>
+<p>(packages needed: <code>persistent</code>, <code>persistent-template</code>, <code>persistent-mysql</code>, <code>mtl</code>, <code>monad-logger</code>)</p>
 <p>Again, everything else works the same.</p>
 <p><a href="https://gist.github.com/5outh/b9d80d7fc174ae5aa87818dfd5158362">View the full source here</a></p>
 <p>And the <a href="https://www.stackage.org/lts-8.0/package/persistent-mysql-2.6">persistent-mysql documentation</a></p>
