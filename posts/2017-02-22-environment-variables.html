@@ -40,8 +40,8 @@
         
         <p>
 <div class="post_body">
-	<p>It’s likely that you’ll have to deal with environment variables at some point. What I’ll describe here is a kicking-off point for robust environment handling with a really low overhead. We’ll basically build a tiny library that will make dealing with environment variables and configuration a lot easier, then I’ll show some example usage.</p>
-<p>TODO: Why not just System.Environment</p>
+	<p>It’s likely that you’ll have to deal with environment variables at some point. What I’ll describe here is a kicking-off point for robust environment handling with little overhead. We’ll build a tiny library you can drop into any application that will make dealing with environment variables for configuration a lot easier. Then I’ll show some example usage.</p>
+<p>This is all built on top of <code>System.Environment</code>, which isn’t super nice to use in its raw form. In particular, there no implicit facilities for type coercion, fallback values, or composability. We’ll address those problems here.</p>
 <p>You’ll need the following libraries to get run the code in this post: <code>transformers</code>, <code>split</code> and <code>safe</code>.</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">{-# LANGUAGE GeneralizedNewtypeDeriving #-}</span>
 
@@ -63,30 +63,40 @@
         , <span class="dt">MonadPlus</span>
         )
 
-<span class="ot">liftMaybe ::</span> <span class="dt">Maybe</span> a <span class="ot">-&gt;</span> <span class="dt">Env</span> a
-liftMaybe <span class="fu">=</span> <span class="dt">Env</span> <span class="fu">.</span> <span class="dt">MaybeT</span> <span class="fu">.</span> pure
-
 <span class="ot">runEnv ::</span> <span class="dt">Env</span> a <span class="ot">-&gt;</span> <span class="dt">IO</span> (<span class="dt">Maybe</span> a)
 runEnv <span class="fu">=</span> runMaybeT <span class="fu">.</span> unEnv
 
+<span class="co">-- Lift a `Maybe` into the `Env` context.</span>
+<span class="ot">liftMaybe ::</span> <span class="dt">Maybe</span> a <span class="ot">-&gt;</span> <span class="dt">Env</span> a
+liftMaybe <span class="fu">=</span> <span class="dt">Env</span> <span class="fu">.</span> <span class="dt">MaybeT</span> <span class="fu">.</span> pure
+
+<span class="co">-- Get an environment variable in its</span>
+<span class="co">-- raw form.</span>
 <span class="ot">getEnv ::</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Env</span> <span class="dt">String</span>
 getEnv key <span class="fu">=</span>
     liftIO (lookupEnv key) <span class="fu">&gt;&gt;=</span> liftMaybe
 
+<span class="co">-- Pull an environment variable from</span>
+<span class="co">-- the environment, using a parsing</span>
+<span class="co">-- function for conversion.</span>
 <span class="ot">env ::</span> (<span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Maybe</span> a) <span class="ot">-&gt;</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Env</span> a
 env f key <span class="fu">=</span> liftMaybe <span class="fu">.</span> f <span class="fu">=&lt;&lt;</span> getEnv key
 
-maybeEnv
+<span class="co">-- Pull an optional value from the</span>
+<span class="co">-- environment.</span>
+optional
 <span class="ot">    ::</span> (<span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Maybe</span> a)
     <span class="ot">-&gt;</span> <span class="dt">String</span>
     <span class="ot">-&gt;</span> <span class="dt">Env</span> (<span class="dt">Maybe</span> a)
-maybeEnv f key <span class="fu">=</span>
+optional f key <span class="fu">=</span>
     (f <span class="fu">&lt;$&gt;</span> getEnv key) <span class="fu">&lt;|&gt;</span> pure <span class="dt">Nothing</span> 
 
+<span class="co">-- Exploit the `Read` interface for a type</span>
+<span class="co">-- to read an environment variable.</span>
 <span class="ot">readEnv ::</span> <span class="dt">Read</span> a <span class="ot">=&gt;</span> <span class="dt">String</span> <span class="ot">-&gt;</span> <span class="dt">Env</span> a
 readEnv <span class="fu">=</span> env readMay</code></pre></div>
 <p>This code was adapted from <a href="https://www.reddit.com/r/haskell/comments/3bckm7/envy_an_environmentally_friendly_way_to_deal_with/csl3nqa/">a comment on reddit</a> (credit to u/Tekmo).</p>
-<p>I honestly think this mini-library is “good enough” for a lot of applications. One major drawback is that it doesn’t report missing or improperly formatted environment variables. That functionality can be added in a relatively straightforward way, however, with a <code>MonadThrow</code> constraint. This is the simplest thing that does the job well, which is exactly what the Haskell Bits are supposed to be about, so we’ll continue on this path.</p>
+<p>I think this mini-library is “good enough” for a lot of applications. One major drawback is that it doesn’t report missing or improperly formatted environment variables - functionality can be added in a relatively straightforward way, however, with a <code>MonadThrow</code> constraint. This is the simplest thing that does the job well, though, so we’ll run with it.</p>
 <p>For my example application, I want to be able to pull configuration information from a set of environment variables.</p>
 <p>We can use our mini-library of functions to do this:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Stage</span> 
@@ -121,12 +131,12 @@ parseVersion versionString <span class="fu">=</span>
 <span class="ot">myEnv ::</span> <span class="dt">Env</span> <span class="dt">MyEnvironment</span>
 myEnv <span class="fu">=</span> <span class="dt">MyEnvironment</span>
     <span class="fu">&lt;$&gt;</span> (readEnv <span class="st">&quot;APP_STAGE&quot;</span> <span class="fu">&lt;|&gt;</span> pure <span class="dt">Production</span>)
-    <span class="fu">&lt;*&gt;</span> maybeEnv <span class="dt">Just</span> <span class="st">&quot;APP_ID&quot;</span>
+    <span class="fu">&lt;*&gt;</span> optional <span class="dt">Just</span> <span class="st">&quot;APP_ID&quot;</span>
     <span class="fu">&lt;*&gt;</span> env parseVersion <span class="st">&quot;APP_VERSION&quot;</span>
 
 <span class="ot">main ::</span> <span class="dt">IO</span> ()
 main <span class="fu">=</span> runEnv myEnv <span class="fu">&gt;&gt;=</span> print</code></pre></div>
-<p>Running this, we get (formatting mine):</p>
+<p>Running this as an executable <code>my_app</code>, we get the following output (formatting mine):</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="fu">$</span> <span class="dt">APP_STAGE</span><span class="fu">=</span><span class="dt">Testing</span> <span class="dt">APP_VERSION</span><span class="fu">=</span>v1<span class="fu">.</span><span class="fl">1.1</span> <span class="dt">APP_ID</span><span class="fu">=</span>its_me_mario my_app
 
 <span class="dt">Just</span> (
@@ -146,6 +156,8 @@ main <span class="fu">=</span> runEnv myEnv <span class="fu">&gt;&gt;=</span> pr
     , version <span class="fu">=</span> <span class="dt">Version</span> <span class="dv">1</span> <span class="dv">1</span> <span class="dv">4</span>
     }
   )</code></pre></div>
+<p>What do you use for handling environment variables in Haskell? Do you use environment variables for different purposes that you’d like to see covered? What else would you like to see covered in future Haskell Bits? Let me know in the comments!</p>
+<p>Ben</p>
 </div>
 </p>
         <div id="disqus_thread"></div>
