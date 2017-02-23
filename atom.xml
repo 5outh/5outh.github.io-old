@@ -75,7 +75,7 @@ readEnv <span class="fu">=</span> env readMay</code></pre></div>
 <p>This code was adapted from <a href="https://www.reddit.com/r/haskell/comments/3bckm7/envy_an_environmentally_friendly_way_to_deal_with/csl3nqa/">a comment on reddit</a> (credit to u/Tekmo).</p>
 <p>I think this mini-library is “good enough” for a lot of applications. One major drawback is that it doesn’t report missing or improperly formatted environment variables - functionality can be added in a relatively straightforward way, however, with a <code>MonadThrow</code> constraint. This is the simplest thing that does the job well, though, so we’ll run with it.</p>
 <p>For my example application, I want to be able to pull configuration information from a set of environment variables.</p>
-<p>We can use our mini-library of functions to do this:</p>
+<p>We can use our mini-library to do this:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Stage</span> 
   <span class="fu">=</span> <span class="dt">Testing</span>
   <span class="fu">|</span> <span class="dt">Development</span>
