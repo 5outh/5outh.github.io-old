@@ -43,8 +43,9 @@
 <h2 id="tvar">TVar</h2>
 <p><img src="/images/HaskellRefs/tvar.png" height="400" style="display:block;margin:auto"></img></p>
 <p><code>TVar</code>s solve a different problem. They are associated with a mechanism called Software Transactional Memory - <code>STM</code> - - a construct that allows us to compose primitive operations and run them sequentially as a <em>transaction</em>. Think database transaction: if one <code>STM</code> action in a chain fails, all previous actions taken in that chain are rolled back accordingly.</p>
-<p><code>TVar</code>s have a similar API to <code>MVar</code>, with one major difference: They can’t ever be empty. <code>TVar</code>s can only be used in a singular thread, which is commonly executed as an atomic transaction using the function <code>atomically :: STM a -&gt; IO ()</code>.</p>
+<p><code>TVar</code>s have a similar API to <code>MVar</code>, with one major difference: They can’t ever be empty. <s><code>TVar</code>s can only be used in a singular thread</s>, which is commonly executed as an atomic transaction using the function <code>atomically :: STM a -&gt; IO ()</code>.</p>
 <p><code>STM</code> provides a bunch of very useful primitives for working with transactions, and is worth exploring:</p>
+<p>EDIT: <code>TVar</code>s can be used in multiple threads. If a <code>TVar</code> is modified by a different thread during the execution of a transaction, the transaction is retried. <a href="https://www.reddit.com/r/haskell/comments/6iumes/haskell_bits_6_a_guide_to_mutable_references/dj9c1ju/"><code>/u/cgibbard</code> explains these semantics quite nicely in a comment on reddit</a>.</p>
 <ul>
 <li><a href="https://hackage.haskell.org/package/stm-2.4.4.1/docs/Control-Monad-STM.html">Documentation for Control.Monad.STM</a></li>
 <li><a href="https://hackage.haskell.org/package/stm-2.4.4.1/docs/Control-Concurrent-STM-TVar.html">Documentation for Control.Concurrent.STM.TVar</a></li>
