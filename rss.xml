@@ -17,7 +17,7 @@
 <p>I’m not going to go into a ton of detail here - I just want to give an overview. I have provided links to the documentation and other resources at the end of each section for further reading.</p>
 <h2 id="ioref">IORef</h2>
 <p><img src="/images/HaskellRefs/ioref.png" height="400" style="display:block;margin:auto"></img></p>
-<p>First up is <code>IORef</code>, the simplest of all containers. It is a sectioned off bit of mutable memory for any number of threads to get/read/modify willy-nilly.</p>
+<p>First up is <code>IORef</code>, the simplest of all containers. It is a sectioned off bit of mutable memory for any number of threads to read/modify willy-nilly.</p>
 <p>We can read this diagram as follows:</p>
 <ul>
 <li>The whole action takes place in the <code>IO</code> monad/context.</li>
