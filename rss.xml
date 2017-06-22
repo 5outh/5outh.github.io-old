@@ -7,8 +7,73 @@
         <description><![CDATA[Ramblings by Benjamin Kovach]]></description>
         <atom:link href="http://kovach.me/rss.xml" rel="self"
                    type="application/rss+xml" />
-        <lastBuildDate>Thu, 11 May 2017 00:00:00 UT</lastBuildDate>
+        <lastBuildDate>Thu, 22 Jun 2017 00:00:00 UT</lastBuildDate>
         <item>
+    <title>Haskell Bits #6 - A Guide to Mutable References</title>
+    <link>http://kovach.me/posts/2017-06-22-mutable-references.html</link>
+    <description><![CDATA[
+<div class="post_body">
+	<p>There are quite a few ways to store mutable data in Haskell. Let’s talk about some of them! Specifically, we will focus on mutable containers that store a single value that can be modified by one or more threads at any given time.</p>
+<h2 id="ioref">IORef</h2>
+<p><img src="/images/HaskellRefs/ioref.png" height="400" style="display:block;margin:auto"></img></p>
+<p>First up is <code>IORef</code>, the simplest of all containers. It is a sectioned off bit of mutable memory for any number of threads to get/read/modify willy-nilly.</p>
+<p>We can read this diagram as follows:</p>
+<ul>
+<li>The whole action takes place in the <code>IO</code> monad/context.</li>
+<li>A new <code>IORef</code> was created in <code>IO</code> somewhere and provided to two threads: <code>t1</code> and <code>t2</code>.</li>
+<li>At some point, <code>t1</code> writes a value to the <code>IORef</code> using <code>writeIORef :: IORef a -&gt; a -&gt; IO a</code></li>
+<li>A little later, <code>t2</code> writes a value to the same <code>IORef</code>.</li>
+<li>Finally, <code>t1</code> reads the <code>IORef</code> using <code>readIORef :: IORef a -&gt; IO a</code></li>
+</ul>
+<p>The following diagrams will follow the same general struture: time increases as we move downwards along a thread, and certain actions are taken within those threads.</p>
+<p><code>IORef</code>s are not very safe. They are highly succeptible to race conditions and other unintended behavior, and should be used with caution. For example, in our diagram: <code>t2</code> modifies the <code>IORef</code> after <code>t1</code> wrote to it - <code>t1</code> probably expected that <code>readIORef</code> would return whatever it placed there. That is not the case, because <code>t2</code> modified it between the write and read steps of <code>t1</code>.</p>
+<ul>
+<li><a href="https://hackage.haskell.org/package/base-4.9.1.0/docs/Data-IORef.html">Documentation for Data.IORef</a></li>
+</ul>
+<h2 id="mvar">MVar</h2>
+<p><img src="/images/HaskellRefs/mvar.png" height="400" style="display:block;margin:auto"></img></p>
+<p><code>MVar</code>s represent a location in memory that holds a value as well. However, <code>MVar</code>s come with the guarantee that no two threads are modifying a variable at the same time.</p>
+<p>An <code>MVar</code> is either empty or full of an <code>a</code>. When we try to <code>takeMVar</code> on an empty <code>MVar</code>, the current thread blocks (indicated by a black line) until a value is put back into the <code>MVar</code>. <code>GHC</code>’s runtime is pretty good at determining when a thread is blocked indefinitely on an <code>MVar</code> read, so we don’t often have to worry about a thread hanging due to a bad program (for too long).</p>
+<p><code>MVar</code>s are still succeptible to race conditions, but are great for simple concurrent tasks like synchronization and basic communication between threads.</p>
+<ul>
+<li><a href="https://hackage.haskell.org/package/base-4.9.1.0/docs/Control-Concurrent-MVar.html">Documentation for Control.Concurrent.MVar</a>=</li>
+<li><a href="http://chimera.labs.oreilly.com/books/1230000000929/ch07.html">More on MVars</a></li>
+</ul>
+<h2 id="tvar">TVar</h2>
+<p><img src="/images/HaskellRefs/tvar.png" height="400" style="display:block;margin:auto"></img></p>
+<p><code>TVar</code>s solve a different problem. They are associated with a mechanism called Software Transactional Memory - <code>STM</code> - - a construct that allows us to compose primitive operations and run them sequentially as a <em>transaction</em>. Think database transaction: if one <code>STM</code> action in a chain fails, all previous actions taken in that chain are rolled back accordingly.</p>
+<p><code>TVar</code>s have a similar API to <code>MVar</code>, with one major difference: They can’t ever be empty. <code>TVar</code>s can only be used in a singular thread, which is commonly executed as an atomic transaction using the function <code>atomically :: STM a -&gt; IO ()</code>.</p>
+<p><code>STM</code> provides a bunch of very useful primitives for working with transactions, and is worth exploring:</p>
+<ul>
+<li><a href="https://hackage.haskell.org/package/stm-2.4.4.1/docs/Control-Monad-STM.html">Documentation for Control.Monad.STM</a></li>
+<li><a href="https://hackage.haskell.org/package/stm-2.4.4.1/docs/Control-Concurrent-STM-TVar.html">Documentation for Control.Concurrent.STM.TVar</a></li>
+<li><a href="http://chimera.labs.oreilly.com/books/1230000000929/ch10.html">More on TVars and STM</a></li>
+</ul>
+<h2 id="tmvar">TMVar</h2>
+<p><img src="/images/HaskellRefs/tmvar.png" height="400" style="display:block;margin:auto"></img></p>
+<p>This diagram should look pretty familiar! <code>TMVar</code>s are a mash between <code>TVar</code>s and <code>MVar</code>s, as you might expect from its name. They can be composed transactionally just like <code>TVar</code>s, but can also be empty, and shared across many threads.</p>
+<p>Since all of these <code>TMVar</code> actions live in <code>STM</code>, they can be run in the same manner as when we use regular <code>TVar</code>s.</p>
+<ul>
+<li><a href="https://hackage.haskell.org/package/stm-2.4.4.1/docs/Control-Concurrent-STM-TMVar.html">Documentation for Control.Concurrent.STM.TMVar</a></li>
+</ul>
+<h2 id="stref">STRef</h2>
+<p><img src="/images/HaskellRefs/stref.png" height="400" style="display:block;margin:auto"></img></p>
+<p><code>STRef</code>s are a completely different type of mutable container. They are restricted to a single thread, much like <code>TVar</code>s, but <em>guarantee</em> that they never escape (they are thread-local). They live in a context called <code>ST</code>, indicating a stateful thread.</p>
+<p>The <code>s</code> value in the type of <code>ST</code> and <code>STRef</code> is a reference to the thread that the <code>ST</code> computation is allowed to access.</p>
+<p><code>ST</code> and <code>STRef</code>s are mainly used to gain performance when you need to be closer to memory, but don’t want to give up safety.</p>
+<ul>
+<li><a href="https://wiki.haskell.org/Monad/ST">More on ST/STRef</a></li>
+<li><a href="https://hackage.haskell.org/package/base-4.9.1.0/docs/Data-STRef.html">Documentation for Data.STRef</a></li>
+</ul>
+<p>Til next time!</p>
+<p>Ben</p>
+</div>
+]]></description>
+    <pubDate>Thu, 22 Jun 2017 00:00:00 UT</pubDate>
+    <guid>http://kovach.me/posts/2017-06-22-mutable-references.html</guid>
+    <dc:creator>Benjamin Kovach</dc:creator>
+</item>
+<item>
     <title>Haskell Bits #5 - Easily working with JSON</title>
     <link>http://kovach.me/posts/2017-05-11-easy-json.html</link>
     <description><![CDATA[
@@ -1065,109 +1130,6 @@ mempty <span class="ot">`mappend`</span> a <span class="fu">==</span> a <span cl
 ]]></description>
     <pubDate>Wed, 08 Jun 2016 00:00:00 UT</pubDate>
     <guid>http://kovach.me/posts/2016-06-08-monoids.html</guid>
-    <dc:creator>Benjamin Kovach</dc:creator>
-</item>
-<item>
-    <title>Categories in Theory and in Haskell</title>
-    <link>http://kovach.me/posts/2016-06-01-categories.html</link>
-    <description><![CDATA[
-<div class="post_body">
-	<h2 id="overview">Overview</h2>
-<p>This is the first post in a series that I hope to expand over time regarding notions in category theory and how they manifest in the haskell programming language.</p>
-<p>Category theory is extremely general; its language is useful in recognizing structure and unifying mathematical concepts that don’t seem related at first glance. It’s a wonderful tool for gaining intuition about wildly different things in one fell swoop, which makes it a lot of fun to explore.</p>
-<p>On the other hand, haskell is an increasingly-widely-used, purely functional programming language with some obvious roots in category theory. A lot of the bizarre-sounding words haskellers use on a daily basis are derived from category theory (or other branches of mathematics that category theory generalizes). However, mapping from category theory to haskell is sometimes nontrivial, and it can be hard to see the connection.</p>
-<p>I think that learning haskell should be a tool for understanding category theory and vice versa. This post, and possibly other future posts, will hopefully shed some light on the explicit translations between category theory language and haskell. This is not necessarily intended to be an introduction to category theory or haskell, and I don’t want to be too pedantic about definitions. however, I hope to incite an intuitive understanding about the basics of category theory and its translation to haskell.</p>
-<h2 id="the-category-intuitively">The category (intuitively)</h2>
-<p>A category is a type of mathematical object. For the uninitiated, one of the simplest examples of a mathematical object is the set; a collection of “things” that doesn’t contain duplicates. Examples are:</p>
-<ul>
-<li>The set of natural numbers <span class="math inline">{0..∞}</span></li>
-<li>The set of all humans living in Europe</li>
-<li>The set of all board games designed in the 1980s</li>
-</ul>
-<p>Sets have a very general structure, so many traditional mathematical objects add structure <em>on top of</em> sets in order to find more interesting insights.</p>
-<p>A category* is one of these objects. Intuitively, a category is a structure containing a bunch of “things” along with a way to move between those things.</p>
-<p><small> * Technically, <em>small</em> category. </small></p>
-<h2 id="the-category-in-theory">The category (in theory)</h2>
-<p>The (semi)formal* definition of a category is as follows:</p>
-<p>A category C consists of two things:</p>
-<ul>
-<li>A collection <span class="math inline"><em>C</em><sub>0</sub></span> of <em>objects</em>.</li>
-<li>A collection <span class="math inline"><em>C</em><sub>1</sub></span> of <em>morphisms</em>, with a <em>source</em> and <em>target</em> in <span class="math inline"><em>C</em><sub>0</sub></span>. We’ll consider an element of this set to look like <code>f : a -&gt; b</code>, where <code>a</code> is called the <em>source</em> of the morphism, and <code>b</code> is called its <em>target</em>.</li>
-<li>A special morphism in <span class="math inline"><em>i</em><em>d</em> : <em>C</em><sub>0</sub> → <em>C</em><sub>1</sub></span>, which assigns to each object <span class="math inline"><em>x</em> ∈ <em>C</em><sub>0</sub></span> a morphism <span class="math inline"><em>i</em><em>d</em><sub><em>x</em></sub></span> following the unit laws listed below.</li>
-<li>A composition operator <span class="math inline">∘</span>, which assigns, to any pair of morphisms <code>f : a   -&gt; b</code> and <code>g : b -&gt; c</code>, a composite morphism <span class="math inline"><em>g</em> ∘ <em>f</em></span> <code>: a -&gt; c</code> (Note that the source of <code>g</code> is the target of <code>f</code>).</li>
-</ul>
-<p>The following are also necessarily true of a category:</p>
-<ul>
-<li>Composition is associative: <span class="math inline">(<em>h</em> ∘ <em>g</em>)∘<em>f</em> = <em>h</em> ∘ (<em>g</em> ∘ <em>f</em>)</span> for <code>f :   c -&gt; d, g : b -&gt; c, h : a -&gt; b</code> in <span class="math inline"><em>C</em><sub>0</sub></span>.</li>
-<li>Composition satisfies the left and right unit laws: <span class="math inline"><em>i</em><em>d</em><sub><em>y</em></sub> ∘ <em>f</em> = <em>f</em> = <em>f</em> ∘ <em>i</em><em>d</em><sub><em>x</em></sub></span> for all morphisms <span class="math inline"><em>s</em></span> in <span class="math inline"><em>C</em><sub>0</sub></span>.</li>
-</ul>
-<p>Intuitively, <span class="math inline"><em>i</em><em>d</em></span> maps each object back to itself. However, when the structure of a category’s morphisms doesn’t look like a pure function, this definition is not exact. Neither the structure of objects, nor the structure of morphisms, is static across all categories. Hence we cannot say exactly what <span class="math inline"><em>i</em><em>d</em></span> or <span class="math inline">∘</span> <em>does</em>; we can only say how they should behave when they appear in a mathematical expression using a certain category.</p>
-<p><small> * Slightly handwavy, but formal enough to get the point across for our purposes! For two <em>full</em> definitions, see <a href="https://ncatlab.org/nlab/show/category#definitions">nlab’s page on categories</a>. </small></p>
-<p>Here’s an example:</p>
-<p><strong>Set</strong> is the category consisting of Sets as objects and functions between those sets as morphisms. Two objects in this category are the set of Natural numbers <span class="math inline">ℕ</span> and the set of Boolean values <span class="math inline"><em>B</em><em>o</em><em>o</em><em>l</em> = {<em>T</em><em>r</em><em>u</em><em>e</em>, <em>F</em><em>a</em><em>l</em><em>s</em><em>e</em>}</span>. The function <span class="math inline"><em>o</em><em>d</em><em>d</em> : ℕ → <em>B</em><em>o</em><em>o</em><em>l</em></span> which takes each natural number to its truth value of whether it is odd or not is a morphism in this category.</p>
-<p>Some other examples of categories are:</p>
-<ul>
-<li>The <strong>free category</strong> generated by a directed graph, with nodes as objects and arrows between nodes as morphisms.</li>
-<li><strong>Hask</strong>, the category of haskell types and functions, which we will discuss next.</li>
-<li><strong>Grp</strong>, the category with groups as objects and group homomorphisms as arrows.*</li>
-</ul>
-<p><small> * It’s hard to find examples that aren’t deeply entrenched in mathematics; sorry! </small></p>
-<h2 id="hask">Hask</h2>
-<p>Before we talk about encoding categories in Haskell, I’d like to briefly talk about Haskell’s very own category, <strong>Hask</strong>.</p>
-<p><strong>Hask</strong> is the category in which:</p>
-<ul>
-<li>Members of Haskell’s types are objects</li>
-<li>Regular Haskell functions (<code>a -&gt; b</code>) are morphisms.</li>
-</ul>
-<p><code>id :: a -&gt; a</code> is the <span class="math inline"><em>i</em><em>d</em></span> morphism, and regular function composition with <code>(.) :: (b -&gt; c) -&gt; (a -&gt; b) -&gt; (a -&gt; c)</code> is morphism composition in <strong>Hask</strong>.</p>
-<p><strong>Hask</strong> is a legitimate category, but we have to be specific about what <code>undefined</code> means. More on that <a href="https://wiki.haskell.org/Hask">on haskell wiki</a>. Note that <strong>Hask</strong> is a category whether or not we’re speaking about it internally or externally; mentions of <strong>Hask</strong> are not required to appear in the context of haskell, which is interesting!</p>
-<h2 id="the-category-in-haskell">The category (in haskell)</h2>
-<p>In haskell, we typically use typeclasses to encode common functionality between various structures, which is exactly what we will do to encode category-theoretical categories. Here is the typeclass definition for <code>Category</code>:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">class</span> <span class="dt">Category</span> cat <span class="kw">where</span>
-  id <span class="fu">:</span> cat a a
-  (<span class="fu">.</span>) <span class="fu">:</span> cat b c <span class="ot">-&gt;</span> cat a b <span class="ot">-&gt;</span> cat a c </code></pre></div>
-<p>We’ll talk more about this in a minute. First, let’s look at the most straight-forward example of a <code>Category</code>, the instance for <code>(-&gt;)</code> (Turn on the <code>InstanceSigs</code> GHC extension to get this to compile):</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">instance</span> <span class="dt">Category</span> (<span class="ot">-&gt;</span>) <span class="kw">where</span>
-<span class="ot">  id ::</span> a <span class="ot">-&gt;</span> a <span class="co">-- or (-&gt;) a a</span>
-  id x <span class="fu">=</span> x
-
-<span class="ot">  (.) ::</span> (b <span class="ot">-&gt;</span> c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> b) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> c)
-      <span class="co">-- or ((-&gt;) b c) -&gt; ((-&gt;) a b) -&gt; ((-&gt;) a c)</span>
-  (f <span class="fu">.</span> g) x <span class="fu">=</span> f (g x) </code></pre></div>
-<p>This instance represents <strong>Hask</strong>. Another common <code>Category</code> instance we commonly encounter as haskell programmers is the one for <code>Kleisli</code> arrows, which we see quite a bit when writing monadic code:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">newtype</span> <span class="dt">Kleisli</span> m a b <span class="fu">=</span> <span class="dt">Kleisli</span> {<span class="ot"> runKleisli ::</span> a <span class="ot">-&gt;</span> m b }
-
-<span class="kw">instance</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> <span class="dt">Category</span> (<span class="dt">Kleisli</span> m) <span class="kw">where</span>
-<span class="ot">  id ::</span> <span class="dt">Kleisli</span> m a a 
-  id <span class="fu">=</span> <span class="dt">Kleisli</span> return
-
-<span class="ot">  (.) ::</span> <span class="dt">Kleisli</span> m b c <span class="ot">-&gt;</span> <span class="dt">Kleisli</span> m a b <span class="ot">-&gt;</span> <span class="dt">Kleisli</span> m a c
-  (<span class="dt">Kleisli</span> f) <span class="fu">.</span> (<span class="dt">Kleisli</span> g) <span class="fu">=</span> <span class="dt">Kleisli</span> <span class="fu">$</span> \x <span class="ot">-&gt;</span> (f <span class="fu">&lt;=&lt;</span> g) x</code></pre></div>
-<p>Recall that:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell">return<span class="ot"> ::</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> a <span class="ot">-&gt;</span> m a 
-<span class="co">-- The Kleisli fish operator &lt;=&lt; comes from Control.Monad.</span>
-<span class="ot">(&lt;=&lt;) ::</span> <span class="dt">Monad</span> m <span class="ot">=&gt;</span> (b <span class="ot">-&gt;</span> m c) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> m b) <span class="ot">-&gt;</span> (a <span class="ot">-&gt;</span> m c)</code></pre></div>
-<p>and it might be easier to see where that instance comes from. We won’t prove that these two instances follow the category laws here; the important thing for our purposes is that these instances follow the pattern. Proving that this instance follows the category laws through equational reasoning is a nice exercise, though.</p>
-<p>At this point, it may feel like there are some holes. In the mathematical interpretation, we construct categories by explicitly providing both objects of a category and its morphisms. It’s not totally obvious where those come up when representing categories in haskell. So, where’s the connection?</p>
-<h2 id="the-connection">The connection</h2>
-<p>Objects of a <code>Category</code> in haskell are types. The typeclass variable <code>cat</code> describes the type (see aside below) of morphisms in our category. Specifically, the sources and targets of our morphisms are hidden in the type declaration for the morphisms we’re declaring a category instance for. In <code>(-&gt;)</code>, the source and target can be any haskell data type. For a morphism in <code>Kleisli</code>, however, the <em>source</em> can be any haskell data type, but the <em>target</em> of our morphisms must be something with the structure <code>m a</code> for some <code>m</code>. This lets us describe in some sense the structure of a morphism in the category, though it does not give us all laws for free (Try encoding <strong>Grp</strong>, for instance).</p>
-<p>In typeclass instances for <code>Category</code>, we develop the laws stating that we must have identity and composition operators that respect the structure of our objects and categories. Haskell’s typechecker helps us confirm that some of the category laws hold by construction. If we can’t find something of type <code>cat a a</code>, we don’t have an <span class="math inline"><em>i</em><em>d</em></span>. If we can’t find a typechecking instance for <code>(.)</code>, we can’t ensure that sources and targets match up when composing morphisms. This may not always give us law-abiding instances for free, but we can certainly be guided by the typechecker.</p>
-<hr />
-<h3 id="aside-types">Aside: types</h3>
-<p>Types are themselves a kind of mathematical structure in the same vein as sets. The main difference is that types are <em>constrained</em> to a certain subset of values; with (mathematical) sets, anything goes. Haskell’s type definitions define a subset of <em>values</em> that are valid inhabitants (members) of a type. The type itself can be viewed in some sense as the set of all of its inhabitants. When we say a value <span class="math inline"><em>v</em></span> has type <span class="math inline"><em>τ</em></span>, with this definition we are saying that <span class="math inline"><em>v</em> ∈ <em>τ</em></span>.</p>
-<hr />
-<p>(These are not the only categories we can encode in Haskell; they are just two common examples.)</p>
-<h2 id="takeaway">Takeaway</h2>
-<p>It is possible to encode a category in haskell, but it doesn’t look exactly the same as laying out its definition on paper in a mathematical setting. In particular:</p>
-<ul>
-<li>A category <span class="math inline"><em>C</em></span> is defined in haskell by providing the type (structure) of morphisms in <span class="math inline"><em>C</em></span>, instead of explicitly stating its objects and morphisms.</li>
-<li>Objects of all categories defined in haskell are types expressible by the haskell type system. In the whole world of mathematics, objects can be much broader.</li>
-<li>Typechecking implementations of <span class="math inline"><em>i</em><em>d</em></span> and <span class="math inline">∘</span> must be provided for all <code>Category</code> instances, which guides us towards law-abiding implementations.</li>
-</ul>
-</div>
-]]></description>
-    <pubDate>Wed, 01 Jun 2016 00:00:00 UT</pubDate>
-    <guid>http://kovach.me/posts/2016-06-01-categories.html</guid>
     <dc:creator>Benjamin Kovach</dc:creator>
 </item>
 

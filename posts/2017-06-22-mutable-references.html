@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Abstract Nonsense</title>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <link rel="stylesheet" type="text/css" href="../css/site.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css" />
+    <link rel="stylesheet" href="../js/lightbox2/dist/css/lightbox.min.css" />
+    <script type="text/javascript" src="../js/lightbox2/dist/js/lightbox-plus-jquery.js"></script>
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet">
+  </head>
+  <body style="margin-left: auto; margin-right: auto; display: block; max-width:800px">
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="../contact.html">About</a></li>
+    <li><a href="../atom.xml">Atom</a></li>
+    <li><a href="../rss.xml">RSS</a></li>
+</ul>
+
+
+        <h3 id="blog_title">Abstract Nonsense: Ramblings by Benjamin Kovach</h3>
+      </header>
+      <section>
+        
+          <h4 class="post-title">Haskell Bits #6 - A Guide to Mutable References</h4>
+        
+        <p>
+<div class="post_body">
+	<p>There are quite a few ways to store mutable data in Haskell. Let’s talk about some of them! Specifically, we will focus on mutable containers that store a single value that can be modified by one or more threads at any given time.</p>
+<h2 id="ioref">IORef</h2>
+<p><img src="../images/HaskellRefs/ioref.png" height="400" style="display:block;margin:auto" /></p>
+<p>First up is <code>IORef</code>, the simplest of all containers. It is a sectioned off bit of mutable memory for any number of threads to get/read/modify willy-nilly.</p>
+<p>We can read this diagram as follows:</p>
+<ul>
+<li>The whole action takes place in the <code>IO</code> monad/context.</li>
+<li>A new <code>IORef</code> was created in <code>IO</code> somewhere and provided to two threads: <code>t1</code> and <code>t2</code>.</li>
+<li>At some point, <code>t1</code> writes a value to the <code>IORef</code> using <code>writeIORef :: IORef a -&gt; a -&gt; IO a</code></li>
+<li>A little later, <code>t2</code> writes a value to the same <code>IORef</code>.</li>
+<li>Finally, <code>t1</code> reads the <code>IORef</code> using <code>readIORef :: IORef a -&gt; IO a</code></li>
+</ul>
+<p>The following diagrams will follow the same general struture: time increases as we move downwards along a thread, and certain actions are taken within those threads.</p>
+<p><code>IORef</code>s are not very safe. They are highly succeptible to race conditions and other unintended behavior, and should be used with caution. For example, in our diagram: <code>t2</code> modifies the <code>IORef</code> after <code>t1</code> wrote to it - <code>t1</code> probably expected that <code>readIORef</code> would return whatever it placed there. That is not the case, because <code>t2</code> modified it between the write and read steps of <code>t1</code>.</p>
+<ul>
+<li><a href="https://hackage.haskell.org/package/base-4.9.1.0/docs/Data-IORef.html">Documentation for Data.IORef</a></li>
+</ul>
+<h2 id="mvar">MVar</h2>
+<p><img src="../images/HaskellRefs/mvar.png" height="400" style="display:block;margin:auto" /></p>
+<p><code>MVar</code>s represent a location in memory that holds a value as well. However, <code>MVar</code>s come with the guarantee that no two threads are modifying a variable at the same time.</p>
+<p>An <code>MVar</code> is either empty or full of an <code>a</code>. When we try to <code>takeMVar</code> on an empty <code>MVar</code>, the current thread blocks (indicated by a black line) until a value is put back into the <code>MVar</code>. <code>GHC</code>’s runtime is pretty good at determining when a thread is blocked indefinitely on an <code>MVar</code> read, so we don’t often have to worry about a thread hanging due to a bad program (for too long).</p>
+<p><code>MVar</code>s are still succeptible to race conditions, but are great for simple concurrent tasks like synchronization and basic communication between threads.</p>
+<ul>
+<li><a href="https://hackage.haskell.org/package/base-4.9.1.0/docs/Control-Concurrent-MVar.html">Documentation for Control.Concurrent.MVar</a>=</li>
+<li><a href="http://chimera.labs.oreilly.com/books/1230000000929/ch07.html">More on MVars</a></li>
+</ul>
+<h2 id="tvar">TVar</h2>
+<p><img src="../images/HaskellRefs/tvar.png" height="400" style="display:block;margin:auto" /></p>
+<p><code>TVar</code>s solve a different problem. They are associated with a mechanism called Software Transactional Memory - <code>STM</code> - - a construct that allows us to compose primitive operations and run them sequentially as a <em>transaction</em>. Think database transaction: if one <code>STM</code> action in a chain fails, all previous actions taken in that chain are rolled back accordingly.</p>
+<p><code>TVar</code>s have a similar API to <code>MVar</code>, with one major difference: They can’t ever be empty. <code>TVar</code>s can only be used in a singular thread, which is commonly executed as an atomic transaction using the function <code>atomically :: STM a -&gt; IO ()</code>.</p>
+<p><code>STM</code> provides a bunch of very useful primitives for working with transactions, and is worth exploring:</p>
+<ul>
+<li><a href="https://hackage.haskell.org/package/stm-2.4.4.1/docs/Control-Monad-STM.html">Documentation for Control.Monad.STM</a></li>
+<li><a href="https://hackage.haskell.org/package/stm-2.4.4.1/docs/Control-Concurrent-STM-TVar.html">Documentation for Control.Concurrent.STM.TVar</a></li>
+<li><a href="http://chimera.labs.oreilly.com/books/1230000000929/ch10.html">More on TVars and STM</a></li>
+</ul>
+<h2 id="tmvar">TMVar</h2>
+<p><img src="../images/HaskellRefs/tmvar.png" height="400" style="display:block;margin:auto" /></p>
+<p>This diagram should look pretty familiar! <code>TMVar</code>s are a mash between <code>TVar</code>s and <code>MVar</code>s, as you might expect from its name. They can be composed transactionally just like <code>TVar</code>s, but can also be empty, and shared across many threads.</p>
+<p>Since all of these <code>TMVar</code> actions live in <code>STM</code>, they can be run in the same manner as when we use regular <code>TVar</code>s.</p>
+<ul>
+<li><a href="https://hackage.haskell.org/package/stm-2.4.4.1/docs/Control-Concurrent-STM-TMVar.html">Documentation for Control.Concurrent.STM.TMVar</a></li>
+</ul>
+<h2 id="stref">STRef</h2>
+<p><img src="../images/HaskellRefs/stref.png" height="400" style="display:block;margin:auto" /></p>
+<p><code>STRef</code>s are a completely different type of mutable container. They are restricted to a single thread, much like <code>TVar</code>s, but <em>guarantee</em> that they never escape (they are thread-local). They live in a context called <code>ST</code>, indicating a stateful thread.</p>
+<p>The <code>s</code> value in the type of <code>ST</code> and <code>STRef</code> is a reference to the thread that the <code>ST</code> computation is allowed to access.</p>
+<p><code>ST</code> and <code>STRef</code>s are mainly used to gain performance when you need to be closer to memory, but don’t want to give up safety.</p>
+<ul>
+<li><a href="https://wiki.haskell.org/Monad/ST">More on ST/STRef</a></li>
+<li><a href="https://hackage.haskell.org/package/base-4.9.1.0/docs/Data-STRef.html">Documentation for Data.STRef</a></li>
+</ul>
+<p>Til next time!</p>
+<p>Ben</p>
+</div>
+</p>
+        <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+
+      </section>
+      <footer class="footer">
+        © 2016 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+    <script>
+      lightbox.option({
+        resizeDuration: 200,
+      })
+    </script>
+  </body>
+</html>
