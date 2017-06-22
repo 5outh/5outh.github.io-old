@@ -64,7 +64,7 @@
 <p>An <code>MVar</code> is either empty or full of an <code>a</code>. When we try to <code>takeMVar</code> on an empty <code>MVar</code>, the current thread blocks (indicated by a black line) until a value is put back into the <code>MVar</code>. <code>GHC</code>’s runtime is pretty good at determining when a thread is blocked indefinitely on an <code>MVar</code> read, so we don’t often have to worry about a thread hanging due to a bad program (for too long).</p>
 <p><code>MVar</code>s are still succeptible to race conditions, but are great for simple concurrent tasks like synchronization and basic communication between threads.</p>
 <ul>
-<li><a href="https://hackage.haskell.org/package/base-4.9.1.0/docs/Control-Concurrent-MVar.html">Documentation for Control.Concurrent.MVar</a>=</li>
+<li><a href="https://hackage.haskell.org/package/base-4.9.1.0/docs/Control-Concurrent-MVar.html">Documentation for Control.Concurrent.MVar</a></li>
 <li><a href="http://chimera.labs.oreilly.com/books/1230000000929/ch07.html">More on MVars</a></li>
 </ul>
 <h2 id="tvar">TVar</h2>
