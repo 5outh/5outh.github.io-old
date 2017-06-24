@@ -60,7 +60,7 @@
 </ul>
 <h2 id="stref">STRef</h2>
 <p><img src="/images/HaskellRefs/stref.png" height="400" style="display:block;margin:auto"></img></p>
-<p><code>STRef</code>s are a completely different type of mutable container. They are restricted to a single thread, much like <code>TVar</code>s, but <em>guarantee</em> that they never escape (they are thread-local). They live in a context called <code>ST</code>, indicating a stateful thread.</p>
+<p><code>STRef</code>s are a completely different type of mutable container. They are restricted to a single thread, but <em>guarantee</em> that they never escape (they are thread-local). They live in a context called <code>ST</code>, indicating a stateful thread.</p>
 <p>The <code>s</code> value in the type of <code>ST</code> and <code>STRef</code> is a reference to the thread that the <code>ST</code> computation is allowed to access.</p>
 <p><code>ST</code> and <code>STRef</code>s are mainly used to gain performance when you need to be closer to memory, but don’t want to give up safety.</p>
 <ul>
