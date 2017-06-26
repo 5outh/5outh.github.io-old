@@ -22,7 +22,7 @@
 <ul>
 <li>The whole action takes place in the <code>IO</code> monad/context.</li>
 <li>A new <code>IORef</code> was created in <code>IO</code> somewhere and provided to two threads: <code>t1</code> and <code>t2</code>.</li>
-<li>At some point, <code>t1</code> writes a value to the <code>IORef</code> using <code>writeIORef :: IORef a -&gt; a -&gt; IO a</code></li>
+<li>At some point, <code>t1</code> writes a value to the <code>IORef</code> using <code>writeIORef :: IORef a -&gt; a -&gt; IO ()</code></li>
 <li>A little later, <code>t2</code> writes a value to the same <code>IORef</code>.</li>
 <li>Finally, <code>t1</code> reads the <code>IORef</code> using <code>readIORef :: IORef a -&gt; IO a</code></li>
 </ul>
