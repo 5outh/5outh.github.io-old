@@ -44,9 +44,9 @@ thead.left tr th {
     text-align:left;
 }
 
-div .sourceCode {
+div.sourceCode {
     line-height: 1.5;
-    overflow: scroll;
+    overflow: auto;
 }
 
 body.p {
