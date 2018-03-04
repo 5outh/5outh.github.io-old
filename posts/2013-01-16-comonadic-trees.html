@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <title>Abstract Nonsense</title>
-    
+    <title>Benjamin Kovach</title>
+
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <link rel="stylesheet" type="text/css" href="../css/default.css" />
     <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
@@ -32,7 +32,7 @@
 </ul>
 
 
-        <h3 id="blog_title">Abstract Nonsense: Ramblings by Benjamin Kovach</h3>
+        <h3 id="blog_title">Benjamin Kovach</h3>
       </header>
       <section>
         
@@ -40,7 +40,7 @@
         
         <p>
 <div class="post_body">
-	<p>We’ve seen in the previous post what monads are and how they work. We saw a few monad instances of some common Haskell structures and toyed around with them a little bit. Towards the end of the post, I asked about making a Monad instance for a generalized tree data type. My guess is that it was relatively difficult. But why? Well, one thing that I didn’t touch on in my last post was that the monadic <code>&gt;&gt;=</code> operation can also be represented as <code>(join . fmap f)</code>, that is, <code>a &gt;&gt;= f = join $ fmap f a</code>, as long as <code>a</code> has a <code>Functor</code> instance. <code>join</code> is a generalized function of the following type:</p>
+  <p>We’ve seen in the previous post what monads are and how they work. We saw a few monad instances of some common Haskell structures and toyed around with them a little bit. Towards the end of the post, I asked about making a Monad instance for a generalized tree data type. My guess is that it was relatively difficult. But why? Well, one thing that I didn’t touch on in my last post was that the monadic <code>&gt;&gt;=</code> operation can also be represented as <code>(join . fmap f)</code>, that is, <code>a &gt;&gt;= f = join $ fmap f a</code>, as long as <code>a</code> has a <code>Functor</code> instance. <code>join</code> is a generalized function of the following type:</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">join ::</span> (<span class="dt">Monad</span> m) <span class="ot">=&gt;</span> m (m a) <span class="ot">-&gt;</span> m a</code></pre></div>
 <p>Basically, this function takes a nested monad and “joins” it with the top level in order to get a regular <code>m a</code> out of it. Since you bind to functions that take as and produce <code>m a</code>s, <code>fmap f</code> actually makes <code>m (m a)</code>s and <code>join</code> is just the tool to fix up the <code>&gt;&gt;=</code> function to produce what we want. Keep in mind that <code>join</code> is not a part of the <code>Monad</code> typeclass, and therefore the above definition for <code>&gt;&gt;=</code> will not work. However, if we are able to make a specific <code>join</code> function (named something else, since <code>join</code> is taken!) for whatever type we are making a <code>Monad</code> instance for, we can certainly use the above definition. I don’t want to spend too much time on this, but I would like to direct the reader to the <code>Monad</code> instance for <code>[]</code> that I mentioned in the last post – can you see any similarities between this and the way I structured <code>&gt;&gt;=</code> above? Now back to the <code>Tree</code> type. Can you devise some way to join <code>Tree</code>s? That is, can you think of a way to flatten a <code>Tree</code> of <code>Tree a</code>s into a <code>Tree a</code>? This actually turns out to be quite difficult, and up to interpretation as to how you want to do it. It’s not as straightforward as moving <code>Maybe (Maybe a)</code>s into <code>Maybe a</code>s or <code>[[a]]</code>s into <code>[a]</code>s. Maybe if we put a <code>Monoid</code> restriction on our <code>a</code> type, as such…</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">Tree</span> a <span class="fu">=</span> <span class="dt">Node</span> a [<span class="dt">Tree</span> a] <span class="fu">|</span> <span class="dt">Leaf</span> a <span class="kw">deriving</span> (<span class="dt">Show</span>, <span class="dt">Eq</span>)
@@ -120,8 +120,8 @@ shortest (<span class="dt">Node</span> x xs) <span class="fu">=</span> x <span c
 <p>Ben</p>
 <p><em>For further reading on Comonads, I recommend the article <a href="http://blog.sigfpe.com/2006/12/evaluating-cellular-automata-is.html">Evaluating Cellular Automata is Comonadic</a>.</em></p>
 </div>
-</p>
-        <div id="disqus_thread"></div>
+
+<div id="disqus_thread"></div>
     <script type="text/javascript">
         /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
         var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
@@ -137,9 +137,10 @@ shortest (<span class="dt">Node</span> x xs) <span class="fu">=</span> x <span c
     <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
 </div>
 
+</p>
       </section>
       <footer class="footer">
-        © 2016 Benjamin Kovach
+        © 2018 Benjamin Kovach
         <br />
         Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
       </footer>
