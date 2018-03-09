@@ -8,8 +8,355 @@
         <name>Benjamin Kovach</name>
         <email>bkovach13@gmail.com</email>
     </author>
-    <updated>2017-06-22T00:00:00Z</updated>
+    <updated>2018-03-07T00:00:00Z</updated>
     <entry>
+    <title>Generating artwork with Haskell</title>
+    <link href="http://kovach.me/posts/2018-03-07-generating-art.html" />
+    <id>http://kovach.me/posts/2018-03-07-generating-art.html</id>
+    <published>2018-03-07T00:00:00Z</published>
+    <updated>2018-03-07T00:00:00Z</updated>
+    <summary type="html"><![CDATA[
+<div class="post_body">
+  <h3 id="introduction">Introduction</h3>
+<p>I’ve been creating <a href="https://en.wikipedia.org/wiki/Generative_art">generative art</a> consistently for about six months now. People are starting to ask what my stack looks like, and until now I haven’t had anything to point at; I’d like to change that today! I’m going to lay out my approach in this blog post, and we’ll put together something simple using the stack I’ve been using to generate art.</p>
+<p>The long and short of it:</p>
+<ul>
+<li>I use Haskell</li>
+<li>I use Cairo</li>
+<li>It rocks!</li>
+</ul>
+<p>Here’s what we’ll be making:</p>
+<p><img src="/images/final_colored_grid.png" width="100%" style="display:block;margin:auto"></img></p>
+<p>I’m assuming some familiarity with Haskell in this post. I’m happy to help others learn, but won’t cover some of the minutiae here - my contact information is totally open if you’d like to reach out!</p>
+<h3 id="getting-set-up">Getting set up</h3>
+<p>You’ll need the following Haskell packages to run this script, if you want to follow along:</p>
+<ul>
+<li>cairo</li>
+<li>colour</li>
+<li>hsnoise</li>
+<li>linear</li>
+<li>MonadRandom</li>
+<li>mtl</li>
+<li>time</li>
+<li>transformers</li>
+</ul>
+<p>You’ll also need <code>cairo</code> (the C library) installed on your system.</p>
+<h3 id="background">Background</h3>
+<h4 id="cairo">Cairo</h4>
+<p><code>Cairo</code> is a 2D graphics library written in C. It’s pretty low-level, and handles things like drawing lines, rectangles or circles on a digital canvas. The specifics aren’t super important here, but it’s good to know what a <code>surface</code> and a <code>source</code> are.</p>
+<p>For our purposes, we can consider a <code>surface</code> to be something like a canvas - a drawing surface. A <code>source</code> is a medium - the “digital paint” we use on the <code>surface</code>. In our case, this will only ever be a flat color. It can technically be a gradient, a texture, or even another <code>surface</code>.</p>
+<h4 id="haskell">Haskell</h4>
+<p>First off, I’ve been writing Haskell code for a long time. I’m very familiar with it, so it was very natural for me to try out this workflow. My choice to go in this direction is largely rooted in familiarity. I followed <a href="http://www.tylerlhobbs.com/">Tyler Hobbs</a>’s lead for a little while, writing Processing code through <a href="http://www.tylerlhobbs.com/writings/using-quil-for-artwork">Quil in Clojure</a>. It worked really well for a while, and I learned a lot of fundamentals regarding generative art (and Lisp!) this way. However, there were some things I just never got <em>quite</em> working, and I didn’t feel like I was as productive as I could be. So, I gave this new stack a shot.</p>
+<p>Pretty immediately, I saw some improvements:</p>
+<blockquote class="twitter-tweet" data-lang="en">
+<p lang="en" dir="ltr">
+I switched my genart stack to haskell/cairo a few days ago. Here's what changed:<br><br>- Deterministic random generation (seeding works across many libs)<br>- Image generation is super fast<br>- Image scaling is much easier<br>- Moving stuff around is slower, but usually correct
+</p>
+— Benjamin Kovach (<span class="citation">@BendotK</span>) <a href="https://twitter.com/BendotK/status/964186342564524032?ref_src=twsrc%5Etfw">February 15, 2018</a>
+</blockquote>
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+<p>For context, I never got seeding working in my old stack. In Haskell, pretty much every library involving randomness works with <code>StdGen</code> (which is part of the standard library, and has a nice API). Scaling images is just a matter of applying a scaling matrix to the whole image (we’ll see this later); it was a pretty manual process before. Changing code around is a bazillion times easier because I don’t really have to worry about messing my data types up - typically the compiler will yell until it becomes satisfied, at which point running the code does what I’d expect*.</p>
+<p>* Not always, of course. But the adage of “if it compiles it works” does have some merit, especially in the world of generative art, where happy accidents are totally welcome.</p>
+<p>I know that these things are totally <em>possible</em> with my old tech stack, I just didn’t find it intuitive for some reason. These things frustrated me to the point where I wanted to try something new.</p>
+<h3 id="how-about-some-code">How about some code?</h3>
+<p>Okay, first we’ll import all the libraries we need and set some GHC extensions:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">{-# LANGUAGE RecordWildCards  #-}</span>
+<span class="ot">{-# LANGUAGE TypeApplications #-}</span>
+<span class="kw">module</span> <span class="dt">Main</span> <span class="kw">where</span>
+
+<span class="kw">import           </span><span class="dt">Control.Arrow</span>
+<span class="kw">import           </span><span class="dt">Control.Concurrent</span>
+<span class="kw">import           </span><span class="dt">Control.Monad.Random</span>
+<span class="kw">import           </span><span class="dt">Control.Monad.Reader</span>
+<span class="kw">import           </span><span class="dt">Data.Colour.RGBSpace</span>
+<span class="kw">import           </span><span class="dt">Data.Colour.RGBSpace.HSV</span>
+<span class="kw">import           </span><span class="dt">Data.Foldable</span>            (for_)
+<span class="kw">import           </span><span class="dt">Data.List</span>                (nub)
+<span class="kw">import           </span><span class="dt">Data.Semigroup</span>           ((&lt;&gt;))
+<span class="kw">import           </span><span class="dt">Data.Time.Clock.POSIX</span>
+<span class="kw">import           </span><span class="dt">Graphics.Rendering.Cairo</span>
+<span class="kw">import           </span><span class="dt">Linear.V2</span>
+<span class="kw">import           </span><span class="dt">Linear.Vector</span>
+<span class="kw">import qualified</span> <span class="dt">Numeric.Noise.Perlin</span>     <span class="kw">as</span> <span class="dt">P</span>
+<span class="kw">import           </span><span class="dt">Text.Printf</span></code></pre></div>
+<p>Now we can talk about our domain.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">World</span> <span class="fu">=</span> <span class="dt">World</span>
+  {<span class="ot"> worldWidth  ::</span> <span class="dt">Int</span>
+  ,<span class="ot"> worldHeight ::</span> <span class="dt">Int</span>
+  ,<span class="ot"> worldSeed   ::</span> <span class="dt">Int</span>
+  ,<span class="ot"> worldScale  ::</span> <span class="dt">Double</span>
+  }
+
+<span class="kw">type</span> <span class="dt">Generate</span> a <span class="fu">=</span> <span class="dt">RandT</span> <span class="dt">StdGen</span> (<span class="dt">ReaderT</span> <span class="dt">World</span> <span class="dt">Render</span>) a</code></pre></div>
+<p>The <code>World</code> type just holds all of the information we may want to access at any point in our program.</p>
+<p>An expression of type <code>Generate a</code> wraps three distinct types of functionality in the following layers. Working from the inside out…</p>
+<ul>
+<li><code>Render</code> is a type that ships with <code>cairo</code> - it is a newtype wrapper around <code>ReaderT Cairo</code>, where <code>Cairo</code> handles cairo context information. This isn’t super important to understand completely, but the key is that it allows us to interface with the cairo C library in a managed way.</li>
+<li>One layer up, we’re working with <code>ReaderT World</code>, which will let us read environment information from the <code>World</code>.</li>
+<li>The final layer to consider is the <code>RandT StdGen</code> layer from the <code>MonadRandom</code> package, which allows us to generate random values from a random number generator.</li>
+</ul>
+<p>The result is a type that allows all of those side effects to coexist, but effectively separates randomness and rendering. We can write functions of type <code>Render a</code> and <code>lift</code> them into the <code>Generate</code> context when needed, effectively separating random generation logic from rendering logic.</p>
+<p>I’ve written a short helper function because <code>lift . lift</code> gets annoying to type after a while and doesn’t communicate intent very well:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">-- | Lift a Cairo action into a Generate action</span>
+<span class="ot">cairo ::</span> <span class="dt">Render</span> a <span class="ot">-&gt;</span> <span class="dt">Generate</span> a
+cairo <span class="fu">=</span> lift <span class="fu">.</span> lift</code></pre></div>
+<p>Those are the basic building blocks that will let us interface with the libraries we need. There’s some boilerplate/setup we’ll need to run <code>Generate</code> expressions, so let’s get that out of the way and get something (nothing?) rendering:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">renderSketch ::</span> <span class="dt">Generate</span> ()
+renderSketch <span class="fu">=</span> pure () <span class="co">-- no-op</span>
+
+<span class="ot">main ::</span> <span class="dt">IO</span> ()
+main <span class="fu">=</span> <span class="kw">do</span>
+  seed <span class="ot">&lt;-</span> round <span class="fu">.</span> (<span class="fu">*</span><span class="dv">1000</span>) <span class="fu">&lt;$&gt;</span> getPOSIXTime
+  <span class="kw">let</span>
+    stdGen <span class="fu">=</span> mkStdGen seed
+    width <span class="fu">=</span> <span class="dv">60</span>
+    height <span class="fu">=</span> <span class="dv">60</span>
+    scaleAmount <span class="fu">=</span> <span class="dv">20</span>
+
+    scaledWidth <span class="fu">=</span> round <span class="fu">$</span> fromIntegral width <span class="fu">*</span> scaleAmount
+    scaledHeight <span class="fu">=</span> round <span class="fu">$</span> fromIntegral height <span class="fu">*</span> scaleAmount
+
+  surface <span class="ot">&lt;-</span> createImageSurface <span class="dt">FormatARGB32</span> scaledWidth scaledHeight
+  <span class="co">-- The &quot;world&quot; thinks the width and height are the initial values, not scaled.</span>
+  <span class="kw">let</span> world <span class="fu">=</span> <span class="dt">World</span> width height seed scaleAmount
+
+  void
+    <span class="fu">.</span> renderWith surface
+    <span class="fu">.</span> flip runReaderT world
+    <span class="fu">.</span> flip runRandT stdGen
+    <span class="fu">$</span> <span class="kw">do</span>
+      cairo <span class="fu">$</span> scale scaleAmount scaleAmount
+      renderSketch
+
+  putStrLn <span class="st">&quot;Generating art...&quot;</span>
+  surfaceWriteToPNG surface
+    <span class="fu">$</span> <span class="st">&quot;images/example_sketch/&quot;</span>
+    <span class="fu">&lt;&gt;</span> show seed <span class="fu">&lt;&gt;</span> <span class="st">&quot;-&quot;</span> <span class="fu">&lt;&gt;</span> show (round<span class="ot"> scaleAmount ::</span> <span class="dt">Int</span>) <span class="fu">&lt;&gt;</span> <span class="st">&quot;.png&quot;</span>
+  surfaceWriteToPNG surface <span class="st">&quot;images/example_sketch/latest.png&quot;</span></code></pre></div>
+<p>Running this should produce two blank images, assuming the <code>images/example_sketch/</code> directory exists: <code>images/example_sketch/&lt;seed&gt;-20.png</code> and <code>images/example_sketch/latest.png</code>.</p>
+<p>We’ll fill out <code>renderSketch</code> in a minute, but for now it’s just an art generator that does absolutely nothing. The rest of this is sort of important.</p>
+<p>First, we grab the current <code>POSIX</code> time in milliseconds for use as our <code>StdGen</code> seed. This is important because it lets us re-use the seed to re-generate the artwork if we need/want to. Some initial variables are set, like the width, height, and how much we want to scale the final image. We create an image surface in <code>ARGB32</code> format to write to, and initialize our <code>World</code>. The next blob runs the <code>renderSketch</code> action with the program’s parameters we just set up. Before rendering the sketch, we can scale by a specified amount (in this case 20), which will effectively “blow up” the image without losing any quality if needed. The next two bits just write out the file to two locations: A timestamped one, which gives us the “seed” value, and a special file called <code>latest.png</code> that just holds the last image generated.</p>
+<p>Just a couple of things about this:</p>
+<ul>
+<li>Because it’s so easy to up the <code>scaleAmount</code>, it makes sense to generate art at a comfortable size for speed purposes.</li>
+<li>The <code>latest.png</code> file is super useful because it allows us to update a static file when the program is run. When I’m working on artwork, I automatically rebuild and regenerate these files on save. Having <code>latest.png</code> around means I can just leave my image viewer open and it will automatically refresh so I don’t have to jump around the file system.</li>
+<li>Our program <em>thinks</em> that the image surface’s dimensions are <code>width x height</code>, but the actual size of the generated image will be scaled. This is really useful because it allows us to think in terms of a statically sized image, even when we might want to start blowing things up. I typically work with a 100x100 workspace, then blow up images as big as 10000x10000 when needed. Almost everything scales using <code>Double</code>s in the <code>cairo</code> API, so it’s really easy to get nice scaling properties while staying comfortable within a single coordinate space.</li>
+</ul>
+<h3 id="lets-render-something">Let’s render something</h3>
+<p>The rest of this post will focus on filling out the <code>renderSketch</code> function, which will actually render something to our <code>Surface</code>.</p>
+<p>Refresher time. We are trying to get here:</p>
+<p><img src="/images/final_colored_grid.png" width="100%" style="display:block;margin:auto"></img></p>
+<p>Generating the background would be a good start, so let’s do that.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">getSize ::</span> <span class="dt">Num</span> a <span class="ot">=&gt;</span> <span class="dt">Generate</span> (a, a)
+getSize <span class="fu">=</span> <span class="kw">do</span>
+  (w, h) <span class="ot">&lt;-</span> asks (worldWidth <span class="fu">&amp;&amp;&amp;</span> worldHeight)
+  pure (fromIntegral w, fromIntegral h)
+
+<span class="ot">fillScreen ::</span> (<span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Render</span> a) <span class="ot">-&gt;</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Generate</span> ()
+fillScreen color opacity <span class="fu">=</span> <span class="kw">do</span>
+  (w, h) <span class="ot">&lt;-</span> getSize <span class="fu">@</span><span class="dt">Double</span>
+  cairo <span class="fu">$</span> <span class="kw">do</span>
+    rectangle <span class="dv">0</span> <span class="dv">0</span> w h
+    color opacity <span class="fu">*&gt;</span> fill
+
+<span class="ot">hsva ::</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Render</span> ()
+hsva h s v <span class="fu">=</span> setSourceRGBA channelRed channelGreen channelBlue
+ <span class="kw">where</span> <span class="dt">RGB</span>{<span class="fu">..</span>} <span class="fu">=</span> hsv h s v
+
+<span class="ot">eggshell ::</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Render</span> ()
+eggshell <span class="fu">=</span> hsva <span class="dv">71</span> <span class="fl">0.13</span> <span class="fl">0.96</span>
+
+<span class="ot">renderSketch ::</span> <span class="dt">Generate</span> ()
+renderSketch <span class="fu">=</span> <span class="kw">do</span>
+  fillScreen eggshell <span class="dv">1</span></code></pre></div>
+<p>Okay that’s a bit more code, sorry. Still have a bit to set up because <code>cairo</code> <em>is</em> a pretty low level library and we’re building from scratch.</p>
+<p>In a nutshell:</p>
+<ul>
+<li><code>getSize</code> gets the dimensions of the surface from the world, and converts them to a specified numeric type.</li>
+<li><code>fillScreen</code> takes a color and an <code>alpha</code> value (an opacity param between 0 and 1) and fills the screen with that color.</li>
+<li><code>hsva</code> lets us use the HSV color space instead of RGB which is <a href="https://www.kirupa.com/design/little_about_color_hsv_rgb.htm">much more in-line with how we think about color</a>. It sets the <code>source</code> (paint) to this color for the next drawing operation.</li>
+<li><code>eggshell</code> is the color we want to fill the screen with.</li>
+<li><code>renderSketch</code> now fills the screen with fully opaque <code>eggshell</code>.</li>
+</ul>
+<p>I consider <code>Double -&gt; Render a</code> to be the type of a <code>Color</code>, which might seem weird. But I want to be able to control opacity, and don’t consider that a part of a color’s definition. However, it’s a tuneable attribute of color, so this representation works nicely.</p>
+<p>Anyway, when we run this script, we should see a completely <code>eggshell</code> square:</p>
+<p><img src="/images/background.png" width="100%" style="display:block;margin:auto"></img></p>
+<h3 id="rendering-something-neat">Rendering something neat</h3>
+<p>Progress! The next step is to draw a grid of quadrilaterals. Notably, we’ll need a concrete notion of two things:</p>
+<ul>
+<li>Points on a grid</li>
+<li>Quadrilaterals</li>
+</ul>
+<p>We’ll start by generating perfect squares, and then add some variance to those squares later.</p>
+<h4 id="points-on-a-grid">Points on a grid</h4>
+<p>Well, first we need the idea of a <code>Point</code> in 2d space. Fortunately the <code>linear</code> library comes in handy here with its <code>V2</code> type. <code>V2 Double</code> will do (a two dimensional vector of <code>Double</code>s).</p>
+<h4 id="quadrilaterals">Quadrilaterals</h4>
+<p>For this program, a <code>Quad</code> (quadrilateral) is well-represented by four points in space. I’ve arbitrarily chosen them to be in clockwise order, starting from the top left:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">--  a---b</span>
+<span class="co">--  |   |</span>
+<span class="co">--  c---d</span>
+<span class="kw">data</span> <span class="dt">Quad</span> <span class="fu">=</span> <span class="dt">Quad</span>
+  {<span class="ot"> quadA ::</span> <span class="dt">V2</span> <span class="dt">Double</span>
+  ,<span class="ot"> quadB ::</span> <span class="dt">V2</span> <span class="dt">Double</span>
+  ,<span class="ot"> quadC ::</span> <span class="dt">V2</span> <span class="dt">Double</span>
+  ,<span class="ot"> quadD ::</span> <span class="dt">V2</span> <span class="dt">Double</span>
+  } <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Ord</span>)</code></pre></div>
+<p>* Note: I totally draw little ascii drawings like this in my comments all the time. It helps!</p>
+<p>A simple way to think about points on a grid is a <code>V2 Int</code> - that is, a vector with integral coordinates. Let’s go that route for now, and generate some squares <code>Quad</code>s!</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromIntegralVector ::</span> <span class="dt">V2</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">V2</span> <span class="dt">Double</span>
+fromIntegralVector (<span class="dt">V2</span> x y) <span class="fu">=</span> <span class="dt">V2</span> (fromIntegral x) (fromIntegral y)
+
+<span class="ot">genQuadGrid ::</span> <span class="dt">Generate</span> [<span class="dt">Quad</span>]
+genQuadGrid <span class="fu">=</span> <span class="kw">do</span>
+  (w, h) <span class="ot">&lt;-</span> getSize <span class="fu">@</span><span class="dt">Int</span>
+  vectors <span class="ot">&lt;-</span> replicateM <span class="dv">800</span> <span class="fu">$</span> <span class="kw">do</span>
+    v <span class="ot">&lt;-</span> <span class="dt">V2</span> <span class="fu">&lt;$&gt;</span> getRandomR (<span class="dv">3</span>, w <span class="ot">`div`</span> <span class="dv">2</span> <span class="fu">-</span> <span class="dv">3</span>) <span class="fu">&lt;*&gt;</span> getRandomR (<span class="dv">3</span>, h <span class="ot">`div`</span> <span class="dv">2</span> <span class="fu">-</span> <span class="dv">3</span>)
+    pure <span class="fu">$</span> v <span class="fu">^*</span> <span class="dv">2</span>
+  pure <span class="fu">.</span> nub <span class="fu">.</span> flip map vectors <span class="fu">$</span> \v <span class="ot">-&gt;</span>
+    <span class="kw">let</span> v&#39; <span class="fu">=</span> fromIntegralVector v
+    <span class="kw">in</span> <span class="dt">Quad</span> v&#39; (v&#39; <span class="fu">^+^</span> <span class="dt">V2</span> <span class="dv">0</span> <span class="fl">1.5</span>) (v&#39; <span class="fu">^+^</span> <span class="dt">V2</span> <span class="fl">1.5</span> <span class="fl">1.5</span>) (v&#39; <span class="fu">^+^</span> <span class="dt">V2</span> <span class="fl">1.5</span> <span class="dv">0</span>)</code></pre></div>
+<p>We produce a grid of quads by:</p>
+<ul>
+<li>Grabbing the dimensions of our surface as <code>Int</code>s</li>
+<li>Getting 800 random integral points in the integer grid (We multiply by two here for slightly bigger shapes, and trim off a margin*)</li>
+<li>Adding the appropriate offsets to them with the <code>^+^</code> (vector addition) operator to produce <code>Quad</code> coordinates around the specified start point</li>
+<li>Filtering out duplicates.</li>
+</ul>
+<p>* Another way of dealing with this would be to double the scaling, and half the width and height, and just use any integer coordinates. But this works too and lets us adjust the margins a little better (with 3 padding vs 2 or 4)</p>
+<p>Armed with this, we need to be able to render the <code>Quad</code>s by drawing the path around them:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">renderClosedPath ::</span> [<span class="dt">V2</span> <span class="dt">Double</span>] <span class="ot">-&gt;</span> <span class="dt">Render</span> ()
+renderClosedPath (<span class="dt">V2</span> x y<span class="fu">:</span>vs) <span class="fu">=</span> <span class="kw">do</span>
+  newPath
+  moveTo x y
+  for_ vs <span class="fu">$</span> \v <span class="ot">-&gt;</span> <span class="kw">let</span> <span class="dt">V2</span> x&#39; y&#39; <span class="fu">=</span> v <span class="kw">in</span> lineTo x&#39; y&#39;
+  closePath
+renderClosedPath [] <span class="fu">=</span> pure ()
+
+<span class="ot">renderQuad ::</span> <span class="dt">Quad</span> <span class="ot">-&gt;</span> <span class="dt">Render</span> ()
+renderQuad <span class="dt">Quad</span>{<span class="fu">..</span>} <span class="fu">=</span> renderClosedPath [quadA, quadB, quadC, quadD]</code></pre></div>
+<p>Then we can render the grid:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">darkGunmetal ::</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Render</span> ()
+darkGunmetal <span class="fu">=</span> hsva <span class="dv">170</span> <span class="fl">0.30</span> <span class="fl">0.16</span>
+
+<span class="ot">renderSketch ::</span> <span class="dt">Generate</span> ()
+renderSketch <span class="fu">=</span> <span class="kw">do</span>
+  fillScreen eggshell <span class="dv">1</span>
+
+  cairo <span class="fu">$</span> setLineWidth <span class="fl">0.15</span>
+
+  quads <span class="ot">&lt;-</span> genQuadGrid
+
+  cairo <span class="fu">$</span> for_ quads <span class="fu">$</span> \quad <span class="ot">-&gt;</span> <span class="kw">do</span>
+    renderQuad quad
+    darkGunmetal <span class="dv">1</span> <span class="fu">*&gt;</span> stroke</code></pre></div>
+<p>Voila:</p>
+<p><img src="/images/grid.png" width="100%" style="display:block;margin:auto"></img></p>
+<h3 id="more-variance">More Variance</h3>
+<p>Let’s add some variance. First, we’ll add some Perlin noise to the quad coordinates: A super easy way to get cool looking, smooth movement.</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">quadAddNoise ::</span> <span class="dt">Quad</span> <span class="ot">-&gt;</span> <span class="dt">Generate</span> <span class="dt">Quad</span>
+quadAddNoise <span class="dt">Quad</span>{<span class="fu">..</span>} <span class="fu">=</span> <span class="kw">do</span>
+  perlinSeed <span class="ot">&lt;-</span> fromIntegral <span class="fu">&lt;$&gt;</span> asks worldSeed
+
+  <span class="kw">let</span>
+    perlinOctaves <span class="fu">=</span> <span class="dv">5</span>
+    perlinScale <span class="fu">=</span> <span class="fl">0.1</span>
+    perlinPersistance <span class="fu">=</span> <span class="fl">0.5</span>
+    perlinNoise
+      <span class="fu">=</span> P.perlin (round perlinSeed) perlinOctaves perlinScale perlinPersistance
+    perlin2d (<span class="dt">V2</span> x y)
+      <span class="fu">=</span> P.noiseValue perlinNoise (x <span class="fu">+</span> perlinSeed, y <span class="fu">+</span> perlinSeed, perlinSeed) <span class="fu">-</span> <span class="fl">0.5</span>
+    addNoise v <span class="fu">=</span> <span class="kw">let</span> noise <span class="fu">=</span> perlin2d v <span class="kw">in</span> v <span class="fu">^+^</span> <span class="dt">V2</span> (noise <span class="fu">/</span> <span class="dv">5</span>) (noise <span class="fu">/</span> <span class="dv">8</span>)
+
+  pure <span class="fu">$</span> <span class="dt">Quad</span>
+    (addNoise quadA)
+    (addNoise quadB)
+    (addNoise quadC)
+    (addNoise quadD)</code></pre></div>
+<p>A large chunk of this is just interfacing with the <code>hsnoise</code> library. There are some parameters we need to provide to <code>P.perlin</code> that you can largely ignore. Check out <a href="http://flafla2.github.io/2014/08/09/perlinnoise.html">Adrian’s Soapbox</a> for a good explanation, if you wish. The key piece here is that the <code>worldSeed</code> is added to the <code>x</code> and <code>y</code> values here when passed into the <code>perlinNoise</code> function. If this was not added, we would see the same variance every time. The short way of saying this is that Perlin noise is deterministic; we can introduce variance by offsetting by our (varying) seed.</p>
+<p>The attentive reader might recognize that the only reason we’re really in <code>Generate</code> here is to get access to the size of the surface. This could also have been written inside the <code>ReaderT World</code> layer just as well and <code>lift</code>ed into the <code>Generate</code> context later.</p>
+<p>Anyway, we generate noise at each of the four quad points, subtract 0.5 from it to allow us to move up and to the left, then add a scaled version of it to each of the four quad points.</p>
+<p>Applying it, we get a some wiggly quadrilaterals:</p>
+<p><img src="/images/noisy_quads.png" width="100%" style="display:block;margin:auto"></img></p>
+<h3 id="even-more-variance">Even More Variance</h3>
+<p>We’re very nearly there, but still missing a couple of points of variance:</p>
+<ol style="list-style-type: decimal">
+<li>We’re not filling any squares, we’re just stroking them all</li>
+<li>We’re only using one color (<code>darkGunmetal</code>), and we want to vary the colors.</li>
+</ol>
+<p>This is best illustrated with code. <code>renderSketch</code> becomes:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">teaGreen ::</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Render</span> ()
+teaGreen <span class="fu">=</span> hsva <span class="dv">81</span> <span class="fl">0.25</span> <span class="fl">0.94</span>
+
+<span class="ot">vividTangerine ::</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Render</span> ()
+vividTangerine <span class="fu">=</span> hsva <span class="dv">11</span> <span class="fl">0.40</span> <span class="fl">0.92</span>
+
+<span class="ot">englishVermillion ::</span> <span class="dt">Double</span> <span class="ot">-&gt;</span> <span class="dt">Render</span> ()
+englishVermillion <span class="fu">=</span> hsva <span class="dv">355</span> <span class="fl">0.68</span> <span class="fl">0.84</span>
+
+<span class="ot">renderSketch ::</span> <span class="dt">Generate</span> ()
+renderSketch <span class="fu">=</span> <span class="kw">do</span>
+  fillScreen eggshell <span class="dv">1</span>
+
+  cairo <span class="fu">$</span> setLineWidth <span class="fl">0.15</span>
+
+  quads <span class="ot">&lt;-</span> genQuadGrid
+  noisyQuads <span class="ot">&lt;-</span> traverse quadAddNoise quads
+
+  for_ noisyQuads <span class="fu">$</span> \quad <span class="ot">-&gt;</span> <span class="kw">do</span>
+    strokeOrFill <span class="ot">&lt;-</span> weighted [(fill, <span class="fl">0.4</span>), (stroke, <span class="fl">0.6</span>)]
+    color <span class="ot">&lt;-</span> uniform
+       [ teaGreen
+       , vividTangerine
+       , englishVermillion
+       , darkGunmetal
+       ]
+    cairo <span class="fu">$</span> <span class="kw">do</span>
+      renderQuad quad
+      color <span class="dv">1</span> <span class="fu">*&gt;</span> strokeOrFill</code></pre></div>
+<p>We use two functions from <code>MonadRandom</code> here:</p>
+<ul>
+<li><code>weighted</code> grabs a value out of a list with the given weight. We will <code>fill</code> 40% of the time and <code>stroke</code> 60% of the time.</li>
+<li><code>uniform</code> assigns the same weight to every value in a list and does the same thing. All four colors have an equal chance of being chosen.</li>
+</ul>
+<p>Rendering has been lifted with <code>cairo</code> into it’s own block inside the <code>for_</code>, instead of wrapping the whole thing, to allow for random generation within the loop.</p>
+<p>Kablam! Art!</p>
+<p><img src="/images/final_colored_grid.png" width="100%" style="display:block;margin:auto"></img></p>
+<h3 id="concluding-remarks">Concluding remarks</h3>
+<h4 id="seeding">Seeding</h4>
+<p>I used this seed to generate this final image: <code>1520476193207</code>. If you’ve been following along, try fixing the seed and generating it on your own!</p>
+<h4 id="modifying-non-random-variables">Modifying non-random variables</h4>
+<p>One thing I haven’t shown off is that you can screw around with anything inside a <code>Render</code> block without affecting the RNG. Try changing the colors around and running this program with a seed you’ve previously used. You’ll get the same structure and distribution of color, but different colors! You can also change things like the scaling of the Perlin noise, or even screw around with the general idea of rendering a quadrilateral, all while retaining the same randomness properties.</p>
+<h4 id="using-other-random-libraries">Using other random libraries</h4>
+<p>It’s not too hard to hook up <code>random-fu</code> to this little framework, which extends its capabilities with e.g. Normally distributed random variables. You can also use other random number generators, as detailed in <a href="http://www.kovach.me/posts/2017-01-30-haskell-bits-randomness.html">my blog post on randomness in Haskell</a>.</p>
+<h4 id="where-did-the-colors-come-from">Where did the colors come from?</h4>
+<p><a href="https://coolors.co">coolors</a>, a handy website. <a href="https://coolors.co/eef4d4-daefb3-ea9e8d-d64550-1c2826">Here’s a link to the palette we used</a>.</p>
+<h4 id="acknowledgements">Acknowledgements</h4>
+<p>A number of people have been super helpful and inspirational to me. To plug a few other generative artists doing cool stuff, check out the work of <a href="http://www.tylerlhobbs.com/">Tyler Hobbs</a>, <a href="https://inconvergent.net">Anders Hoff (inconvergent)</a>, and <a href="http://manoloide.com/">Manoloide</a>. Visit <a href="https://reddit.com/r/generative">r/generative</a> for even more good stuff.</p>
+<p>Also a huge thanks to <a href="https://hackage.haskell.org/package/cairo">the Gtk2Hs team</a> for the cairo bindings, wihout which all of this would not be possible.</p>
+<h4 id="where-can-i-see-your-work">Where can I see your work?</h4>
+<p>I’ve just recently set up a bigcartel shop here, where you can view and purchase my work: <a href="https://bendotk.bigcartel.com">bigcartel link</a>. You can also follow me on <a href="https://instagram.com/bendotk">instagram</a> or <a href="https://instagram.com/bendotk">twitter</a>, where I’ve been posting frequent updates.</p>
+<p>I hope this post provided a glimpse into my general artistic process. As always, I’m happy to answer any questions in the comments or on twitter!</p>
+</div>
+
+<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+
+]]></summary>
+</entry>
+<entry>
     <title>Haskell Bits #6 - A Guide to Mutable References</title>
     <link href="http://kovach.me/posts/2017-06-22-mutable-references.html" />
     <id>http://kovach.me/posts/2017-06-22-mutable-references.html</id>
@@ -1157,133 +1504,6 @@ main <span class="fu">=</span> newPureMT <span class="fu">&gt;&gt;=</span> print
 <h2 id="florence-2">12/20/2016 (Florence)</h2>
 <p>We did get some relaxation in today! Breakfast was good, but Amanda tried to get by on cheese and honey (a weird choice). We slept in a bit and headed out of the hotel around 10:00. We immediately headed towards the Accademia Gallery, where David is located. After waiting in a line for about 20 minutes, we made it in. Everyone and their mother told us to pre-purchase a ticket online to skip the waiting part. We should have listened, but it could have been much worse! The museum isn’t very big; it’s just a single corridor and a few rooms. The main attraction really is David. It is hugely impressive, though. We both found the full-size statue remarkable. We spent probably 20 minutes there, staring at the giant statue and browsing some of Michelangelo’s unfinished sculptures. Afterwards, it was shopping day! First, we found a reputable leather shop and got Amanda a new purse. This place was in the market square, so we picked up some veggie samosas from a hole in the wall Indian restaurant for lunch while we were in the area. The next stop was the huge central market for food-related gifts! Here, we got some cheese, oil, vinegar and coffee for our friends and family. We also caved and bought some traditional balsamic vinegar for ourselves. The last stop we made was at Massimo Ravinale for some silk; the man who helped us out was notably very helpful. After a quick last-minute cannoli (we can’t stop eating dessert in between every meal!), we went back to the hotel and packed some stuff up in preparation for tomorrow. And we binge watched Please Like Me (it’s an Australian show on European Netflix here). It was a nice stretch of relaxation we’d been needing. At 7:30, we went to dinner at a place called Zeb, which was recommended by our food tour guide. We had two types of ravioli (pear-peccorino and yellow pumpkin with butter sauce), a peppery beef stew called peposo, a few glasses of wine and a salted chocolate torte. It was the best meal we had in Italy. A perfect way to end our trip to Florence! We leave in the morning (at 5:00 AM) and will really miss it here. The whole experience was unforgettable!</p>
 <p><a data-lightbox="day-9" href="/images/italy/day9/IMG_1670.jpg" data-title="David is pretty big"><img src="/images/italy/day9/IMG_1670.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1671.jpg" data-title=""><img src="/images/italy/day9/IMG_1671.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1673.jpg" data-title="Hm, what's this..."><img src="/images/italy/day9/IMG_1673.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1674.jpg" data-title="WHAT IS THAT LITTLE MAN DOING??"><img src="/images/italy/day9/IMG_1674.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1675.jpg" data-title="A bakery"><img src="/images/italy/day9/IMG_1675.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1683.jpg" data-title="Butternut squash ravioli"><img src="/images/italy/day9/IMG_1683.jpg" style="height:200px; border-radius:4px;margin:5px"/></a> <a data-lightbox="day-9" href="/images/italy/day9/IMG_1684.jpg" data-title="Peposo"><img src="/images/italy/day9/IMG_1684.jpg" style="height:200px; border-radius:4px;margin:5px"/></a></p>
-</div>
-
-<div id="disqus_thread"></div>
-    <script type="text/javascript">
-        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
-        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
-
-        /* * * DON'T EDIT BELOW THIS LINE * * */
-        (function() {
-            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
-            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
-            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
-        })();
-    </script>
-    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
-    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
-</div>
-
-]]></summary>
-</entry>
-<entry>
-    <title>Monoids in Theory and in Haskell</title>
-    <link href="http://kovach.me/posts/2016-06-08-monoids.html" />
-    <id>http://kovach.me/posts/2016-06-08-monoids.html</id>
-    <published>2016-06-08T00:00:00Z</published>
-    <updated>2016-06-08T00:00:00Z</updated>
-    <summary type="html"><![CDATA[
-<div class="post_body">
-  <h2 id="overview">Overview</h2>
-<p>This is the second in a series of posts about category theory and its relationship with Haskell. We’ll be exploring monoids in this post!</p>
-<h2 id="the-monoid-intuitively">The monoid (intuitively)</h2>
-<p>A monoid is a mathematical object, just like a category, <a href="http://kovach.me/posts/2016-06-01-categories.html">which we explored in the last post</a>. Intuitively, a monoid is a structure which encodes the ability to concatenate two things, and a zero-like element which, when used in concatenation, does not affect the other element. Let’s look at a typical mathematical formulation of a monoid:</p>
-<p>A <strong>monoid</strong> is a set <span class="math inline"><em>M</em></span> equipped with a binary operation <span class="math inline">× : <em>m</em> → <em>m</em> → <em>m</em></span> and a special element <span class="math inline">1 ∈ <em>M</em></span> such that <span class="math inline">1</span> and <span class="math inline">×</span> satisfy the following laws:</p>
-<ul>
-<li>Associativity: <span class="math inline">(<em>x</em> × <em>y</em>)×<em>z</em> = <em>x</em> × (<em>y</em> × <em>z</em>)</span></li>
-<li>Left and right unit laws: <span class="math inline">1 × <em>x</em> = <em>x</em> = <em>x</em> × 1</span></li>
-</ul>
-<p>I wouldn’t be surprised at this point if, even without a heavy mathematical background, one could come up with an example of a monoid. Let’s look at a couple.</p>
-<p>The monoid <span class="math inline">{ℝ, ×, 1}</span> is an obvious example of a monoid; that is, our set <span class="math inline"><em>M</em></span> is the <strong>real numbers</strong>, our binary operation is <strong>multiplication</strong>, and our <span class="math inline">1</span> element is the number <strong>1</strong>.</p>
-<p>Another example of a monoid on numeric values is <span class="math inline">{ℤ, +, 0}</span>; the <strong>integers</strong> under <strong>addition</strong> with <span class="math inline">1</span> being <strong>0</strong>.</p>
-<p>In the programming world, monoids show up all over the place as well. A well-known monoid, using haskell syntax, is <code>{[a], (++), []}</code> – the monoid of <strong>lists</strong> under <strong>concatentation</strong> with <span class="math inline">1</span> being the <strong>empty list</strong>.</p>
-<h2 id="the-monoid-in-haskell">The monoid (in haskell)</h2>
-<p>As a haskell programmer, the aforementioned definition for a monoid looks awfully familiar. The typeclass for <code>Monoid</code> looks almost the exact same, sans axioms, and modulo names, as the traditional mathematical formulation:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">class</span> <span class="dt">Monoid</span> m <span class="kw">where</span>
-<span class="ot">  mempty ::</span> m <span class="co">-- Analogous to 1</span>
-<span class="ot">  mappend ::</span> m <span class="ot">-&gt;</span> m <span class="ot">-&gt;</span> m <span class="co">-- Analogous to our binary operation </span></code></pre></div>
-<p>We can even encode the three examples of monoids mentioned above in a very straightforward way:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">-- Let&#39;s pretend Floats are the reals </span>
-<span class="co">-- {R, *, 1}</span>
-<span class="kw">newtype</span> <span class="dt">Product</span> <span class="fu">=</span> <span class="dt">Product</span>{<span class="ot"> runProduct ::</span> <span class="dt">Float</span> }
-
-<span class="kw">instance</span> <span class="dt">Monoid</span> <span class="dt">Product</span> <span class="kw">where</span>
-  mempty <span class="fu">=</span> <span class="dt">Product</span> <span class="dv">1</span>
-  mappend (<span class="dt">Product</span> a) (<span class="dt">Product</span> b) <span class="fu">=</span> <span class="dt">Product</span> (a <span class="fu">*</span> b)
-
-<span class="co">-- {Z, +, 0}</span>
-<span class="kw">newtype</span> <span class="dt">Sum</span> <span class="fu">=</span> <span class="dt">Sum</span>{<span class="ot"> runSum ::</span> <span class="dt">Integer</span> }
-
-<span class="kw">instance</span> <span class="dt">Monoid</span> <span class="dt">Sum</span> <span class="kw">where</span>
-  mempty <span class="fu">=</span> <span class="dt">Sum</span> <span class="dv">0</span>
-  mappend (<span class="dt">Sum</span> a) (<span class="dt">Sum</span> b) <span class="fu">=</span> <span class="dt">Sum</span> (a <span class="fu">+</span> b)
-
-<span class="co">-- This one is defined in the Prelude</span>
-<span class="co">-- {[a], ++, []}</span>
-<span class="kw">instance</span> <span class="dt">Monoid</span> [a] <span class="kw">where</span>
-  mempty <span class="fu">=</span> []
-  mappend xs ys <span class="fu">=</span> xs <span class="fu">++</span> ys</code></pre></div>
-<p>We have to verify that our instances follow the laws, which translated to haskell look like this:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">-- Associativity</span>
-(a <span class="ot">`mappend`</span> b) <span class="ot">`mappend`</span> c <span class="fu">==</span> a <span class="ot">`mappend`</span> (b <span class="ot">`mappend`</span> c)
-
-<span class="co">-- Left/right unit laws</span>
-mempty <span class="ot">`mappend`</span> a <span class="fu">==</span> a <span class="fu">==</span> a <span class="ot">`mappend`</span> mempty</code></pre></div>
-<p>It is not so hard to reason through these laws for the instances listed above.</p>
-<h2 id="the-monoid-in-category-theory">The monoid (in category theory)</h2>
-<p>We’re not done quite yet, because category theorists have picked up on a quaint definition of a monoid:</p>
-<blockquote>
-<p>A <strong>monoid</strong> is a category with one object.</p>
-</blockquote>
-<blockquote>
-<p>~ <a href="http://www.springer.com/us/book/9780387984032">Mac Lane, 1978</a></p>
-</blockquote>
-<p>Well, that’s convenient. But what is really going on here? Let’s look at a visual representation of the category theory interpretation of <span class="math inline">{ℤ, +, 0}</span> that we saw before*:</p>
-<p><img src="/images/monoid.png" style="width:350px" class="center-block"></p>
-<p><small>* The image gets a little messy with the negatives, but those are valid arrows as well.</small></p>
-<p>Morphisms in our category are elements of <span class="math inline">ℤ</span>. This can be confusing if we have some expectation about the way arrows should look. But, recall that to define a morphism, we only need to be able to assign a source and target to them, which are totally abstract concepts. Our set of morphisms is then exactly <span class="math inline">ℤ</span>, where we just pick the same source and target for every single element.</p>
-<p><span class="math inline"><em>i</em><em>d</em></span> is the arrow labeled <span class="math inline">0</span>:</p>
-<p><img src="/images/morphisms_0.png" style="width:350px" class="center-block"></p>
-<p>Here are two more arrows:</p>
-<p><img src="/images/morphisms_1.png" style="width:350px" class="center-block"></p>
-<p>Composing these arrows gives us something that looks like this, intuitively:</p>
-<p><img src="/images/morphisms_2.png" style="width:350px" class="center-block"></p>
-<p>Composition is addition, so this is equivalent to:</p>
-<p><img src="/images/morphisms_3.png" style="width:350px" class="center-block"></p>
-<p>An important thing to note here is that <strong>the object doesn’t really matter</strong>. The above diagrams should make sense regardless of what the source and target of the arrows are, as long as they’re the same thing. The source and target <strong>must</strong> be the same so we can compose freely. If they weren’t, we wouldn’t be guaranteed to “have access” to the start of any arrow in our monoid at the end of any other arrow, which would disallow composition. This means we necessarily only have a single object in our category.</p>
-<p>So long as we have a monoid by the classical definition, we have a monoid by the category theoretical definition. The conceptual mapping of formulations (from classical to category theoretical) is:</p>
-<ul>
-<li><span class="math inline">× → ∘</span></li>
-<li><span class="math inline">1 → <em>i</em><em>d</em></span></li>
-</ul>
-<p>The tricky thing here is that in category-theory-land, the morphisms might not really look like functions, or even arrows, as we might expect. An integer as a category morphism follows the laws if we plug in the right <span class="math inline"><em>i</em><em>d</em></span> and <span class="math inline">∘</span>, and that’s all that matters.</p>
-<h2 id="the-connection">The connection</h2>
-<p>Let’s formulate the aforementioned <code>Sum</code> as a legitimate haskell <code>Category</code> (<code>C</code> for <code>Category</code>):</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="kw">data</span> <span class="dt">SumC</span> a b <span class="kw">where</span>
-  <span class="dt">SumC</span><span class="ot"> ::</span> <span class="dt">Integer</span> <span class="ot">-&gt;</span> <span class="dt">SumC</span> a a
-
-<span class="kw">deriving</span> <span class="kw">instance</span> <span class="dt">Show</span> (<span class="dt">SumC</span> a b)
-
-<span class="kw">instance</span> <span class="dt">Category</span> <span class="dt">SumC</span> <span class="kw">where</span>
-  id <span class="fu">=</span> <span class="dt">SumC</span> <span class="dv">0</span>
-  <span class="dt">SumC</span> x <span class="fu">.</span> <span class="dt">SumC</span> y <span class="fu">=</span> <span class="dt">SumC</span> (x <span class="fu">+</span> y)</code></pre></div>
-<p>We can use GADTs to encode the monoid (read: category with a single object) of integers under addition. We are saying two things here:</p>
-<ul>
-<li>A <code>SumC</code> is constructed by an <code>Integer</code> (effectively, this means that a <code>SumC</code> <em>is</em> an <code>Integer</code>; this is just a wrapper).</li>
-<li>Although we’re providing two type variables to <code>SumC</code>, we can only construct things of type <code>SumC a a</code>.</li>
-</ul>
-<p>In effect, if we view <code>SumC</code> as <code>cat</code> (the type of morphisms in a category), we can encode the monoid <span class="math inline">{ℤ, +, 0}</span> exactly as a <code>Category</code>. If you look closely, you’ll notice that we only have a single object in our category, and we don’t care what it is. This is exactly <code>a</code>. A <code>SumC</code> can only be constructed in one way, namely, by asserting that its source and target is <code>a</code>. The identity arrow is <code>0</code>, which we’d expect, and composing two arrows is adding their <code>Integer</code> values.</p>
-<p>The category laws all hold, which you may check. This instance acts exactly like the builtin <code>Monoid</code> instance for the <code>Sum</code> we saw previously, modulo operator/function names*:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="fu">*</span><span class="dt">Main</span><span class="fu">&gt;</span> <span class="dt">SumC</span> <span class="dv">8</span> <span class="fu">.</span> id
-<span class="dt">SumC</span> <span class="dv">8</span>
-<span class="fu">*</span><span class="dt">Main</span><span class="fu">&gt;</span> id <span class="fu">.</span> <span class="dt">SumC</span> <span class="dv">8</span>
-<span class="dt">SumC</span> <span class="dv">8</span>
-<span class="fu">*</span><span class="dt">Main</span><span class="fu">&gt;</span> <span class="dt">SumC</span> <span class="dv">17</span> <span class="fu">.</span> <span class="dt">SumC</span> <span class="dv">90</span>
-<span class="dt">SumC</span> <span class="dv">107</span></code></pre></div>
-<p><small> * s/id/mempty, s/./+, s/SumC/Sum and you’ve got the original form. </small></p>
-<p>Just like with a <code>Category</code>, this isn’t the only <code>Monoid</code> you can encode – you should be able to use this type of construction for any haskell <code>Monoid</code>.</p>
-<p>Note that I wouldn’t actually recommend doing this in practice; it’s mainly a mental exercise. That said, I think it’s pretty cool that we can get very close to a category-theoretic formulation of what a monoid is in Haskell!</p>
 </div>
 
 <div id="disqus_thread"></div>
