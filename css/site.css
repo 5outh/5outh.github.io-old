@@ -63,3 +63,24 @@ li>a:hover {
     font-size:1em;
 }
 
+/*flexbox*/
+
+section.flex {
+ display: flex;
+ justify-content: center;
+ flex-wrap: wrap;
+}
+
+.media {
+ min-width: 0;
+ margin: 5px;
+}
+
+img.flex {
+   width: 600px;
+   max-width: 100%;
+}
+
+.art-blurb {
+  text-align: center;
+}
