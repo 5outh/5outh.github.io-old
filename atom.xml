@@ -191,10 +191,10 @@ renderSketch <span class="fu">=</span> <span class="kw">do</span>
 <h4 id="points-on-a-grid">Points on a grid</h4>
 <p>Well, first we need the idea of a <code>Point</code> in 2d space. Fortunately the <code>linear</code> library comes in handy here with its <code>V2</code> type. <code>V2 Double</code> will do (a two dimensional vector of <code>Double</code>s).</p>
 <h4 id="quadrilaterals">Quadrilaterals</h4>
-<p>For this program, a <code>Quad</code> (quadrilateral) is well-represented by four points in space. I’ve arbitrarily chosen them to be in clockwise order, starting from the top left:</p>
-<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">--  a---b</span>
+<p>For this program, a <code>Quad</code> (quadrilateral) is well-represented by four points in space. I’ve arbitrarily chosen them to be in counter-clockwise order, starting from the top left:</p>
+<div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="co">--  a---d</span>
 <span class="co">--  |   |</span>
-<span class="co">--  c---d</span>
+<span class="co">--  b---c</span>
 <span class="kw">data</span> <span class="dt">Quad</span> <span class="fu">=</span> <span class="dt">Quad</span>
   {<span class="ot"> quadA ::</span> <span class="dt">V2</span> <span class="dt">Double</span>
   ,<span class="ot"> quadB ::</span> <span class="dt">V2</span> <span class="dt">Double</span>
@@ -202,7 +202,7 @@ renderSketch <span class="fu">=</span> <span class="kw">do</span>
   ,<span class="ot"> quadD ::</span> <span class="dt">V2</span> <span class="dt">Double</span>
   } <span class="kw">deriving</span> (<span class="dt">Eq</span>, <span class="dt">Ord</span>)</code></pre></div>
 <p>* Note: I totally draw little ascii drawings like this in my comments all the time. It helps!</p>
-<p>A simple way to think about points on a grid is a <code>V2 Int</code> - that is, a vector with integral coordinates. Let’s go that route for now, and generate some squares <code>Quad</code>s!</p>
+<p>A simple way to think about points on a grid is a <code>V2 Int</code> - that is, a vector with integral coordinates. Let’s go that route for now, and generate some <code>Quad</code>s!</p>
 <div class="sourceCode"><pre class="sourceCode haskell"><code class="sourceCode haskell"><span class="ot">fromIntegralVector ::</span> <span class="dt">V2</span> <span class="dt">Int</span> <span class="ot">-&gt;</span> <span class="dt">V2</span> <span class="dt">Double</span>
 fromIntegralVector (<span class="dt">V2</span> x y) <span class="fu">=</span> <span class="dt">V2</span> (fromIntegral x) (fromIntegral y)
 
