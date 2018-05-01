@@ -36,7 +36,7 @@
 <p>First, I moved back to the original line tapering streamline program like <a
 href="#section-1">2</a>, but only generated starting points inside of a circle instead of the original square.</p>
 <p>The other, more important (and subtler) point is this: I started plotting fixed points of the vector field. Those red dots represent locations in the field that have magnitude less than a certain threshold (which at this point was set really low). I originally thought it would be nice to show these inside of the shape (if you squint, you can see a couple of them inside the circular field). Lines close to red dots will always be very short, so it’s kind of fun to point out those locations.</p>
-<p><strong>Note:</strong> When I say “fixed point threshold”, I mean the value under which a vector is considered to have 0 magnitude. Plotting only <em>actual</em> zeros would very likely show nothing <sup><a href="#section-a">a</a></sup>. This variable is played with a bit, so I want to clarify what I mean.</p>
+<p><strong>Note:</strong> When I say “fixed point threshold”, I mean the value under which a vector is considered to have 0 magnitude. Plotting only <em>actual</em> zeros would very likely show nothing. This variable is played with a bit, so I want to clarify what I mean.</p>
 <h2 id="section-6">7</h2>
 <p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="/images/blotch/007.png"></img></p>
 <p>This is exactly the same thing as before with many more lines, generated from points inside of a set of randomly generated circles within the viewport. I may explore this further; I like the result looking back. At the time, it wasn’t what I was looking for. Onwards!</p>
@@ -48,7 +48,7 @@ href="#section-1">2</a>, but only generated starting points inside of a circle i
 <p>I made them bigger, but still didn’t love what I was seeing. At this point, I’d been seeing bunches of small red dots show up around the flow fields for a while, and started wondering about something…</p>
 <h2 id="section-9">10</h2>
 <p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="/images/blotch/011.png"></img></p>
-<p>At this point, I tried removing the streamline rendering altogether and instead focused my attentionon the fixed points. I upped the fixed point threshold (to include points with a higher magnitude) and just plotted those. I liked the emerging pattern. This was a big pivot point - everything from here on out is focused on these fixed points.</p>
+<p>At this point, I tried removing the streamline rendering altogether and instead focused my attention on the fixed points. I upped the fixed point threshold (to include points with a higher magnitude) and just plotted those. I liked the emerging pattern. This was a big pivot point - everything from here on out is focused on these fixed points.</p>
 <h2 id="section-10">11</h2>
 <p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="/images/blotch/012.png"></img></p>
 <p>Another rendering of the same thing with an even higher threshold for fixed points.</p>
@@ -166,8 +166,6 @@ href="#section-12">13</a>, but constraining points to a central circle.</p>
 </div>
 <p>Thanks for reading! I would be happy to expand on any individual points brought up during this whirlwind tour of my process. Please let me know if you’d like further clarification on anything in the comments below!</p>
 <p>Ben</p>
-<hr />
-<p><span id="section-a"><strong>a</strong>. Unless, of course, we had infinite precision. Then we’d always show at least one. See <a href="https://www.youtube.com/watch?v=B4UGZEjG02s">the Hairy Ball Theorem</a>.</span></p>
 </div>
 
 <div id="disqus_thread"></div>
