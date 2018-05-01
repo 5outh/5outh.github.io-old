@@ -1,0 +1,241 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Benjamin Kovach</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" type="text/css" href="../css/default.css" />
+    <link rel="stylesheet" type="text/css" href="../css/syntax.css" />
+    <link rel="stylesheet" type="text/css" href="../css/site.css" />
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.4.3/jquery.min.js"></script>
+    <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+    </script>
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.2/css/font-awesome.min.css" />
+    <link rel="stylesheet" href="../js/lightbox2/dist/css/lightbox.min.css" />
+    <script type="text/javascript" src="../js/lightbox2/dist/js/lightbox-plus-jquery.js"></script>
+    <script type="text/javascript" src="../js/site.js?v=3"></script>
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet">
+  </head>
+  <body style="margin-left: auto; margin-right: auto; display: block; max-width:800px">
+    <div id="left"></div>
+    <div class="wrapper">
+      <header>
+        <ul id="nav">
+    <li><a href="../">Home</a></li>
+    <li><a href="http://shop.kovach.me/">Shop</a></li>
+    <li><a href="../art.html">Selected Artwork</a></li>
+    <li><a href="../contact.html">About</a></li>
+    <li><a href="../atom.xml">Atom</a>/<a href="../rss.xml">RSS</a></li>
+</ul>
+
+
+        <h3 id="blog_title">Benjamin Kovach</h3>
+      </header>
+      <section>
+        
+          <h4 class="post-title">A Story of Iteration: Generating "Blotch"</h4>
+        
+        <p>
+<div class="post_body">
+  <h3 id="introduction">Introduction</h3>
+<p>At time of writing, “Blotch” is my most recent piece of generative artwork. It looks nothing like I had originally envisioned, and the iteration of the project was interesting in its own right. Getting this piece to a place that I actually liked was a long, fun, and somewhat arduous process punctuated with tons of intermediate results that look absolutely nothing like the final piece. This isn’t uncommon, and I want to talk about it. Feel free to scroll down to the bottom of this post or check out my <a href="../art.html">art page</a> to see the final result.</p>
+<h2 id="section">1</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/001.png" /></p>
+<p>It all started with a square. I’ve been playing with a data structure that lets me index into a square lattice, and I wanted to render a flow field using it. The basic idea here is that we’re shoving a randomly angled unit vector into each position in the lattice constrained by that central square, then running an averaging filter over the field many times (averaging each vector with its eight neighbors). At the end, a bunch of streamlines are drawn through the flow field. It’s a simple idea that I revisit from time to time.</p>
+<h2 id="section-1">2</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/002.png" /></p>
+<p>Next, I mixed up the rendering a bit by tapering the streamlines.</p>
+<h2 id="section-2">3</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/003.png" /></p>
+<p>The same idea with much larger (and many fewer) lines.</p>
+<h2 id="section-3">4</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/004.png" /></p>
+<p>Rendering in black <em>and</em> white gives this cool layering effect, but large blobs don’t seem to go anywhere, which was kind of a bummer.</p>
+<h2 id="section-4">5</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/005.png" /></p>
+<p>Here’s a variation on the same idea, clipped into a circle.</p>
+<h2 id="section-5">6</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/006.png" /></p>
+<p>There are two new things happening here:</p>
+<p>First, I moved back to the original line tapering streamline program like <a href="#section-1">2</a>, but only generated starting points inside of a circle instead of the original square.</p>
+<p>The other, more important (and subtler) point is this: I started plotting fixed points of the vector field. Those red dots represent locations in the field that have magnitude less than a certain threshold (which at this point was set really low). I originally thought it would be nice to show these inside of the shape (if you squint, you can see a couple of them inside the circular field). Lines close to red dots will always be very short, so it’s kind of fun to point out those locations.</p>
+<p><strong>Note:</strong> When I say “fixed point threshold”, I mean the value under which a vector is considered to have 0 magnitude. Plotting only <em>actual</em> zeros would very likely show nothing <sup><a href="#section-a">a</a></sup>. This variable is played with a bit, so I want to clarify what I mean.</p>
+<h2 id="section-6">7</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/007.png" /></p>
+<p>This is exactly the same thing as before with many more lines, generated from points inside of a set of randomly generated circles within the viewport. I may explore this further; I like the result looking back. At the time, it wasn’t what I was looking for. Onwards!</p>
+<h2 id="section-7">8</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/008.png" /></p>
+<p>I noticed a little teardrop pattern in the shorter streamlines, so I generated some of those a little larger with a small drop shadow.</p>
+<h2 id="section-8">9</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/009.png" /></p>
+<p>I made them bigger, but still didn’t love what I was seeing. At this point, I’d been seeing bunches of small red dots show up around the flow fields for a while, and started wondering about something…</p>
+<h2 id="section-9">10</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/011.png" /></p>
+<p>At this point, I tried removing the streamline rendering altogether and instead focused my attentionon the fixed points. I upped the fixed point threshold (to include points with a higher magnitude) and just plotted those. I liked the emerging pattern. This was a big pivot point - everything from here on out is focused on these fixed points.</p>
+<h2 id="section-10">11</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/012.png" /></p>
+<p>Another rendering of the same thing with an even higher threshold for fixed points.</p>
+<h2 id="section-11">12</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/013.png" /></p>
+<p>The rendering each point was a little boring, so I decided to change it from a red dot to a black one with varying size. The size of each dot is proportional to the number of neighbors in the lattice that are also fixed points, which produces this little pattern.</p>
+<h2 id="section-12">13</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/014.png" /></p>
+<p>Here’s another variation on the same thing; the size of each point is upped a bit, but the proportions remain the same. The circle fill is replaced with a stroke. This is pretty close to the final pattern I ended up with.</p>
+<h2 id="section-13">14</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/015.png" /></p>
+<p>I spent a little while layering these flow field representations with progressively stricter fixed point thresholds. This one renders a bunch of them on top of one another, with a thin layer of a low-alpha white painted underneath it.</p>
+<h2 id="section-14">15</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/016.png" /></p>
+<p>That looked muddy to me, so I started rendering something similar to <a href="#section-12">13</a>, but constraining points to a central circle.</p>
+<h2 id="section-15">16</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/017.png" /></p>
+<p>This is where things started to take shape. Instead of layering the series of plots on top of one another like in <a href="#section-14">16</a>, I gave the plots a small vertical offset, which produced a nice pattern.</p>
+<h2 id="section-16">17</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/018.png" /></p>
+<p>The basis of this whole piece is an algorithm that smooths a two dimensional space by averaging neighors. Riffing on that idea, you can get an equally nice one dimensional smoothing algorithm by averaging the neighbors of a list of values.</p>
+<p>That’s exactly what I did here: this smooth horizontal movement follows the path of a list of normally distributed values smoothed in exactly this way.</p>
+<h2 id="section-17">18</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/019.png" /></p>
+<p>Does it look better as a square? I didn’t think so, but it was worth a shot.</p>
+<h2 id="section-18">19</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/020.png" /></p>
+<p>I run a lot of things that are constrained inside of a shape through a simple rectangle subdivision algorithm to see how it turns out. I tried that here, but it didn’t add much to the overall composition.</p>
+<h2 id="section-19">20</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/021.png" /></p>
+<p>Once again, I tried removing the vertical offsets. Looks a bit like a sequence of stamps to me.</p>
+<h2 id="section-20">21</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/022.png" /></p>
+<p>Back to the vertical offsets, this time with circles scaled smaller. This was starting to look like a dead end, so I moved back to circular blotches.</p>
+<h2 id="section-21">22</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/023.png" /></p>
+<p>This needed color! I’m still getting comfortable with color, but I watched a short video on HSV color theory which gave me a pretty good idea, which I used here. I’ll explain a bit.</p>
+<p>Aaron Rutten <a href="https://youtu.be/8UGleDu1KEo?t=614">posted a YouTube video</a> a while ago about using HSV to shade and tint. He describes a system of shading which involves drawing a “curve” on a color triangle, starting with low saturation and high brightness (lights), curving over to high saturation and medium brightness (colorful), then back over to low saturation/low brightness (darks). This gave me an idea. Quadratic Bezier curves are defined with two end points and a control point; three points that can be tweaked to produce exactly the type of curve that Aaron mentions in his YouTube video. In order to produce a color for each successive blotch, I tried sampling this Bezier curve for a purple color, starting with a dark color and ending with a light one. I’ll refer to this as a “color Bezier” from now on.</p>
+<h2 id="section-22">23</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/024.png" /></p>
+<p>This was nice, but still needed another element. Why not outline the circles behind each blotch? I tried it, and it really didn’t work.</p>
+<h2 id="section-23">24</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/025.png" /></p>
+<p>Once again, I tried removing the vertical offsets. This looked to me a little like a texture from an old video game.</p>
+<h2 id="section-24">25</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/026.png" /></p>
+<p>Next, I went back to something like <a href="#section-21">22</a>, with three tweaks:</p>
+<ol style="list-style-type: decimal">
+<li>Randomly sample the color Bezier for colors instead of interpolating along it for colors</li>
+<li>Draw the blotches in reverse order, so the one nearest the top shows up layered above the ones below it.</li>
+<li>Instead of only considering immediate neighbors to determine circle size, use the 5x5 grid centered at the point.</li>
+</ol>
+<p>In the final piece, (3) is still used. I think it produces a more interesting pattern.</p>
+<h2 id="section-25">26</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/027.png" /></p>
+<p>I felt like this wasn’t going anywhere at this point and almost gave up on the whole thing. I thought hard about what this piece needed, and decided to try slicing the blotches randomly along their midpoint and layering them to try to introduce more variation. The color gradient is back; I didn’t like the random sampling of colors.</p>
+<h2 id="section-26">27</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/028.png" /></p>
+<p>The last one was a little too chaotic. Instead, I tried only slicing near-vertically.</p>
+<h2 id="section-27">28</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/029.png" /></p>
+<p>Tried using a different color to produce the color Bezier, and got this blueish one. I also moved back to the random slices. I liked the color of this.</p>
+<h2 id="section-28">29</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/030.png" /></p>
+<p><strong>Yet again</strong> I removed the vertical offsets (or, at least lowered them). This produced a pretty cool gradient effect this time, but didn’t fill the space well.</p>
+<h2 id="section-29">30</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/031.png" /></p>
+<p>At this point, I thought that something similar to <a href="#section-27">28</a> was close, but lacking something. I added a brushstroke pattern by dragging a set of points generated in a small circle across a randomly constructed Chaikin curve in the background. It looked really out of place, so I removed it.</p>
+<h2 id="section-30">31</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/032.png" /></p>
+<p>I went back to something like <a href="#section-26">27</a>, but this time tried to produce some constrast by splitting the space into two separate vertical slices and rendering them with complementary color Beziers.</p>
+<h2 id="section-31">32</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/033.png" /></p>
+<p>There’s a bit of a leap here. I didn’t like the last few images, and felt I was going in circles. Two things I wanted to improve were:</p>
+<ol style="list-style-type: decimal">
+<li>There was too much going on, and lots of details were being lost.</li>
+<li>The colors really weren’t popping. This is <em>really</em> frustrating to me as someone learning to use color effectively!</li>
+</ol>
+<p>To address these issues, I made two significant changes. First, I reduced the number of iterations of blotches to only 5, instead of the previous 20ish (can’t remember the exact number), which dealt with the chaos and made the shapes pop a bit better. To deal with the color issue, I made a somewhat unintuitive change. I started generating the color Bezier from not one, but two, <em>completely random</em> hues, linearly interpolating between the two hues as the Bezier is constructed. Because I know the <em>system</em> works, I could sort of get away with leaving up the color generation to randomness and forget about hand picking them. A lot of the results around this time weren’t colored super well, but some, like this one, turned out quite nicely.</p>
+<h2 id="section-32">33</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/034.png" /></p>
+<p>Here’s another iteration from around this time. I liked this one enough to share with others as a work in progress. I still thought it was missing something, but the colors were nice.</p>
+<h2 id="section-33">34</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="70%" src="../images/blotch/035.png" /></p>
+<p>I hated the one background I tried back in <a href="#section-30">31</a>, but still thought the piece needed a background. After a while, I realized I aready had something that meshed well with the foreground: the original vector field! I started rendering each vector in the field with a small line width, which produced a nice, faint texture like I was looking for.</p>
+<h2 id="section-34">35</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="80%" src="../images/blotch/036.png" /></p>
+<p>The border of the vector field was still a bunch of untouched, random vectors, which formed a noisy edge. To fix that up, I scaled the vector field to contain a few more lattice points outside of the viewport so the outer edges aren’t visible.</p>
+<h2 id="final">36 (Final)</h2>
+<p><img style="margin-left:auto; margin-right:auto; display:block;" width="80%" src="../images/blotch/037.png" /></p>
+<p>I liked the previous result, but it needed small tweaks. If you aren’t looking super carefully, these two images probably look identical. The changes made here are some minor tweaks to the fixed point thresholds, and a soft glow behind each cluster of circles, which helps the layers stand out. It’s worth mentioning that my process changed a little bit here. Instead of generating random images, I found my candidate and began re-generating the same exact image with tweaks that didn’t mess with the random generator. This has been a useful pattern for me, and I recommend giving it a try.</p>
+<h2 id="in-conclusion">In conclusion…</h2>
+<p>I didn’t have much of an end goal at the start of this process other than “make something cool using this data structure I have on hand.” Half of the process of generating art for me is taking every idea that pops up and running with it, and the other half is evaluating and criticizing the results that show up. The images shown here are only a small subset of the images generated along the way, but they serve as a good representation of the path the piece took from start to finish.</p>
+<p>For more artwork like this, see <a href="../art.html">my art page</a> and follow me on <a href="twitter.com/bendotk">twitter</a> and <a href="instagram.com/bendotk">instagram</a>. “Blotch” is available as a one-of-a-kind print on <a href="https://bigcartel.com/bendotk">my shop</a>.</p>
+<p>Finally, if you want to be alerted of new art for sale, feel free to sign up for my newsletter for the occasional update. I won’t spam you, I promise!</p>
+<link href="//cdn-images.mailchimp.com/embedcode/horizontal-slim-10_7.css" rel="stylesheet" type="text/css">
+<style type="text/css">
+          #mc_embed_signup{background:#fff; clear:left; font:14px Helvetica,Arial,sans-serif; width:100%;}
+          /* Add your own MailChimp form style overrides in your site stylesheet or in this style block.
+             We recommend moving this block and the preceding CSS link to the HEAD of your HTML file. */
+  </style>
+<div id="mc_embed_signup">
+<form action="https://kovach.us12.list-manage.com/subscribe/post?u=126021f20d39147e20047aa2a&amp;id=f84bdb0f0d" method="post" id="mc-embedded-subscribe-form" name="mc-embedded-subscribe-form" class="validate" target="_blank" novalidate>
+<div id="mc_embed_signup_scroll">
+<!--<label for="mce-EMAIL">Subscribe to newsletter</label>--> <input type="email" value name="EMAIL" class="email" id="mce-EMAIL" placeholder="email address" required> <!-- real people should not fill this in and expect good things - do not remove this or risk form bot signups-->
+<div style="position: absolute; left: -5000px;" aria-hidden="true">
+<input type="text" name="b_126021f20d39147e20047aa2a_f84bdb0f0d" tabindex="-1" value>
+</div>
+<div class="clear">
+<input type="submit" value="Subscribe" name="subscribe" id="mc-embedded-subscribe" class="button">
+</div>
+</div>
+</form>
+</div>
+<p>Thanks for reading! I would be happy to expand on any individual points brought up during this whirlwind tour of my process. Please let me know if you’d like further clarification on anything in the comments below!</p>
+<p>Ben</p>
+<hr />
+<p><span id="section-a"><strong>a</strong>. Unless, of course, we had infinite precision. Then we’d always show at least one. See <a href="https://www.youtube.com/watch?v=B4UGZEjG02s">the Hairy Ball Theorem</a>.</span></p>
+</div>
+
+<div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'abstract-nonsense'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</div>
+
+</p>
+      </section>
+      <footer class="footer">
+        © 2018 Benjamin Kovach
+        <br />
+        Site proudly generated by <a href="https://jaspervdj.be/hakyll/">Hakyll</a>
+      </footer>
+    </div>
+    <!-- Google Analytics -->
+    <script>
+      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+      (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+      m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+      })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+      ga('create', 'UA-53651640-1', 'auto');
+      ga('send', 'pageview');
+
+    </script>
+    <script>
+      lightbox.option({
+        resizeDuration: 200,
+      })
+    </script>
+  </body>
+</html>
