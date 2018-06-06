@@ -77,7 +77,8 @@ section.flex {
 }
 
 img.flex {
-   width: 600px;
+   width: 350px;
+   padding:10px;
    max-width: 100%;
 }
 
