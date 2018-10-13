@@ -143,7 +143,7 @@ saveSketch <span class="fu">=</span> <span class="kw">do</span>
 <li>A way of formatting ints with a specific amount of padding (I use 8 digits)</li>
 <li>ffmpeg, of course</li>
 </ul>
-<p>I have a utility function called <code>renderProgress</code> that renders a single png with the surface that is currently being drawn. I can litter my program with calls to <code>renderProgress</code> - often in loops - to render a given frame with the appropriate index. This stores images in the folder <code>./images/&lt;name&gt;/progress/&lt;seed&gt;/&lt;index&gt;.png</code>, where <index> is a frame index, padded with 8s to 8 digits. For example:</p>
+<p>I have a utility function called <code>renderProgress</code> that renders a single png with the surface that is currently being drawn. I can litter my program with calls to <code>renderProgress</code> - often in loops - to render a given frame with the appropriate index. This stores images in the folder <code>./images/&lt;name&gt;/progress/&lt;seed&gt;/&lt;index&gt;.png</code>, where <code>&lt;index&gt;</code> is a frame index, padded with 8s to 8 digits. For example:</p>
 <pre><code>$ ls -l images/example_sketch/progress/1539455256091/
 total 72464
 -rw-r--r-- 1 bendotk bendotk   5386 Oct 13 14:27 00000000.png
