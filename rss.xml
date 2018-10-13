@@ -68,7 +68,7 @@ Available options:
 <p>Extremely useful stuff. We’ll talk about <code>--render-progress</code> and <code>--render-video</code> later.</p>
 <h3 id="recovering-lost-sketches">Recovering lost sketches</h3>
 <p>Here’s a short story. One day, I was iterating on a process and posted a work in progress image to twitter. <a href="http://www.tylerlhobbs.com">Tyler Hobbs</a> expressed interest in a print swap with that work-in-progress image. Hell yeah, I thought! Sounds awesome.</p>
-<p>Unfortunately, I had iterated on that particular sketch a bit after posting. The original image I had posted was not large enough to print, and I had no way of pairing up the seed used to generate the code with the code that actually generated it. I was able to recover it mostly, but the colors were not quite the same as the image I posted on twitter, and it took a ton of effort to even partially recover it. This really bothered me. Ultimately, we still swapped prints, which was a wonderful experience. But I knew I had to fix the problem of unrecoverable works in progress.</p>
+<p>Unfortunately, I had iterated on that particular sketch a bit after posting. The original image I had posted was not large enough to print, and I had no way of pairing up the seed used to generate the image with the code that actually generated it. I was able to recover it mostly, but the colors were not quite the same as the image I posted on twitter, and it took a ton of effort to even partially recover it. This really bothered me. Ultimately, we still swapped prints, which was a wonderful experience. But I knew I had to fix the problem of unrecoverable works in progress.</p>
 <center>
 <blockquote class="twitter-tweet" data-lang="en">
 <p lang="und" dir="ltr">
